@@ -25,6 +25,7 @@ import { execa } from "execa"
 import { ExecaTerminalProcess } from "../ExecaTerminalProcess"
 import { BaseTerminal } from "../BaseTerminal"
 import type { RooTerminal } from "../types"
+import * as shellUtils from "../../../utils/shell"
 
 describe("ExecaTerminalProcess", () => {
 	let mockTerminal: RooTerminal
@@ -34,6 +35,7 @@ describe("ExecaTerminalProcess", () => {
 	beforeEach(() => {
 		originalEnv = { ...process.env }
 		BaseTerminal.setExecaShellPath(undefined)
+		vitest.spyOn(shellUtils, "getShell").mockReturnValue("/mock/fallback-shell")
 		mockTerminal = {
 			provider: "execa",
 			id: 1,
@@ -54,7 +56,7 @@ describe("ExecaTerminalProcess", () => {
 
 	afterEach(() => {
 		process.env = originalEnv
-		vitest.clearAllMocks()
+		vitest.restoreAllMocks()
 	})
 
 	describe("UTF-8 encoding fix", () => {
@@ -63,7 +65,7 @@ describe("ExecaTerminalProcess", () => {
 			const execaMock = vitest.mocked(execa)
 			expect(execaMock).toHaveBeenCalledWith(
 				expect.objectContaining({
-					shell: expect.any(String),
+					shell: "/mock/fallback-shell",
 					cwd: "/test/cwd",
 					all: true,
 					env: expect.objectContaining({
@@ -111,7 +113,7 @@ describe("ExecaTerminalProcess", () => {
 			const execaMock = vitest.mocked(execa)
 			expect(execaMock).toHaveBeenCalledWith(
 				expect.objectContaining({
-					shell: expect.any(String),
+					shell: "/mock/fallback-shell",
 				}),
 			)
 		})
