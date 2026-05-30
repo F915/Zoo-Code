@@ -30,12 +30,13 @@ export class Terminal extends BaseTerminal {
 		// the profile path). Explicitly passing shellPath bypasses the profile
 		// system and prevents VS Code from injecting WSL shell integration.
 		if (wslProfile) {
-			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env })
+			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Zoo Code", iconPath, env })
 		} else if (BaseTerminal.getExecaShellPath()) {
 			const shell = BaseTerminal.getExecaShellPath()!
-			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env, shellPath: shell })
+			this.terminal =
+				terminal ?? vscode.window.createTerminal({ cwd, name: "Zoo Code", iconPath, env, shellPath: shell })
 		} else {
-			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env })
+			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Zoo Code", iconPath, env })
 		}
 
 		if (Terminal.getTerminalZdotdir()) {

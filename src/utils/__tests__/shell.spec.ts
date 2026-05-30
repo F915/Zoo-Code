@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import * as vscode from "vscode"
-import { existsSync } from "fs"
 import { userInfo } from "os"
 import { getShell, getWslProfile, WSL_EXE_PATH } from "../shell"
 
@@ -34,8 +33,6 @@ describe("Shell Detection", () => {
 
 		setVSEnvShell("")
 		vi.mocked(userInfo).mockReturnValue({ shell: null } as any)
-		// Default: PowerShell 7 is not installed, so the probe falls back to legacy.
-		vi.mocked(existsSync).mockReturnValue(false)
 	})
 
 	afterEach(() => {

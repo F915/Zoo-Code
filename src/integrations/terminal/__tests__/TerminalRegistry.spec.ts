@@ -17,7 +17,7 @@ describe("TerminalRegistry", () => {
 			(...args: any[]) =>
 				({
 					exitStatus: undefined,
-					name: "Roo Code",
+					name: "Zoo Code",
 					processId: Promise.resolve(123),
 					creationOptions: {},
 					state: {
@@ -33,7 +33,6 @@ describe("TerminalRegistry", () => {
 					},
 				}) as any,
 		)
-
 	})
 
 	afterEach(() => {
@@ -46,7 +45,7 @@ describe("TerminalRegistry", () => {
 
 			expect(mockCreateTerminal).toHaveBeenCalledWith({
 				cwd: "/test/path",
-				name: "Roo Code",
+				name: "Zoo Code",
 				iconPath: expect.objectContaining({ id: expect.any(String) }),
 				env: {
 					PAGER,
@@ -67,7 +66,7 @@ describe("TerminalRegistry", () => {
 
 				expect(mockCreateTerminal).toHaveBeenCalledWith({
 					cwd: "/test/path",
-					name: "Roo Code",
+					name: "Zoo Code",
 					iconPath: expect.objectContaining({ id: expect.any(String) }),
 					env: {
 						PAGER,
@@ -76,7 +75,7 @@ describe("TerminalRegistry", () => {
 						VTE_VERSION: "0",
 						PROMPT_EOL_MARK: "",
 					},
-					})
+				})
 			} finally {
 				// Restore original delay
 				Terminal.setCommandDelay(originalDelay)
@@ -90,7 +89,7 @@ describe("TerminalRegistry", () => {
 
 				expect(mockCreateTerminal).toHaveBeenCalledWith({
 					cwd: "/test/path",
-					name: "Roo Code",
+					name: "Zoo Code",
 					iconPath: expect.objectContaining({ id: expect.any(String) }),
 					env: {
 						PAGER,
@@ -99,7 +98,7 @@ describe("TerminalRegistry", () => {
 						PROMPT_EOL_MARK: "",
 						ITERM_SHELL_INTEGRATION_INSTALLED: "Yes",
 					},
-					})
+				})
 			} finally {
 				Terminal.setTerminalZshOhMy(false)
 			}
@@ -112,7 +111,7 @@ describe("TerminalRegistry", () => {
 
 				expect(mockCreateTerminal).toHaveBeenCalledWith({
 					cwd: "/test/path",
-					name: "Roo Code",
+					name: "Zoo Code",
 					iconPath: expect.objectContaining({ id: expect.any(String) }),
 					env: {
 						PAGER,
@@ -121,7 +120,7 @@ describe("TerminalRegistry", () => {
 						PROMPT_EOL_MARK: "",
 						POWERLEVEL9K_TERM_SHELL_INTEGRATION: "true",
 					},
-					})
+				})
 			} finally {
 				Terminal.setTerminalZshP10k(false)
 			}
