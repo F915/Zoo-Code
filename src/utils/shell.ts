@@ -1,4 +1,5 @@
 import * as vscode from "vscode"
+import { existsSync } from "fs"
 import { userInfo } from "os"
 
 export const WSL_EXE_PATH = "C:\\Windows\\System32\\wsl.exe" as const
@@ -44,7 +45,12 @@ export function getWslProfile(): { path: string; args: string[] } | null {
 	const { defaultProfileName, profiles } = getWindowsTerminalConfig()
 
 	if (!defaultProfileName) {
-		return null
+		// No explicit Windows terminal profile is configured. VS Code auto-detects
+		// the default on modern Windows and prefers PowerShell 7 (pwsh.exe) when it
+		// is installed, otherwise the always-present Windows PowerShell 5.1. Mirror
+		// that here so the system prompt advertises the real shell instead of falling
+		// through to COMSPEC (cmd.exe). See issue #82.
+		return existsSync(SHELL_PATHS.POWERSHELL_7) ? SHELL_PATHS.POWERSHELL_7 : SHELL_PATHS.POWERSHELL_LEGACY
 	}
 
 	const profile = profiles[defaultProfileName]
