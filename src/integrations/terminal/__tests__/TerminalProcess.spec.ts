@@ -128,8 +128,9 @@ describe("TerminalProcess", () => {
 			await noShellProcess.run("test command")
 			await eventPromises
 
-			// Verify sendText was called with the command
-			expect(noShellTerminal.sendText).toHaveBeenCalledWith("test command", true)
+			// Verify sendText was NOT called with the command — the fix prevents
+			// double execution (sendText + execa) when shell integration is unavailable.
+			expect(noShellTerminal.sendText).not.toHaveBeenCalledWith("test command", true)
 
 			// Restore the original console.warn
 			consoleWarnSpy.mockRestore()

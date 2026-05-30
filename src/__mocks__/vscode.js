@@ -81,6 +81,7 @@ export const window = {
 		sendText: () => {},
 	}),
 	onDidCloseTerminal: () => mockDisposable,
+	onDidChangeTerminalShellIntegration: () => mockDisposable,
 	createTextEditorDecorationType: () => ({ dispose: () => {} }),
 }
 
@@ -104,6 +105,7 @@ export const extensions = {
 
 export const env = {
 	openExternal: () => Promise.resolve(),
+	shell: "/bin/bash", // vscode.env.shell mock — resolved default shell
 }
 
 export const Uri = mockUri

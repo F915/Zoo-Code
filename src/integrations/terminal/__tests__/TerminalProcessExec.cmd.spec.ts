@@ -49,6 +49,9 @@ vi.mock("vscode", () => {
 			}
 			id: string
 		},
+		env: {
+			shell: "C:/Windows/System32/cmd.exe",
+		},
 		Uri: {
 			file: (path: string) => ({ fsPath: path }),
 		},

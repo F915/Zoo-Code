@@ -5,7 +5,7 @@ import process from "process"
 import type { RooTerminal } from "./types"
 import { BaseTerminal } from "./BaseTerminal"
 import { BaseTerminalProcess } from "./BaseTerminalProcess"
-import { getShell } from "../../utils/shell"
+import { getShell, WSL_EXE_PATH } from "../../utils/shell"
 
 export class ExecaTerminalProcess extends BaseTerminalProcess {
 	private terminalRef: WeakRef<RooTerminal>
@@ -40,19 +40,52 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 		try {
 			this.isHot = true
 
-			this.subprocess = execa({
-				shell: BaseTerminal.getExecaShellPath() || getShell(),
-				cwd: this.terminal.getCurrentWorkingDirectory(),
-				all: true,
-				// Ignore stdin to ensure non-interactive mode and prevent hanging
-				stdin: "ignore",
-				env: {
-					...process.env,
-					// Ensure UTF-8 encoding for Ruby, CocoaPods, etc.
-					LANG: "en_US.UTF-8",
-					LC_ALL: "en_US.UTF-8",
-				},
-			})`${command}`
+			const resolvedShell = BaseTerminal.getExecaShellPath() || getShell()
+			const isWslShell = resolvedShell === WSL_EXE_PATH
+
+			let effectiveShell: string | boolean = resolvedShell
+			let effectiveCommand = command
+
+			if (isWslShell) {
+				// Spawn wsl.exe directly (not through cmd.exe) to avoid nested-quoting issues.
+				// execa(file, args, options) passes args as an array — no shell interpretation.
+				const windowsCwd = this.terminal.getCurrentWorkingDirectory()
+				const forwardSlashedCwd = windowsCwd.replace(/\\/g, "/")
+				const wslCwd = forwardSlashedCwd.replace(
+					/^([A-Za-z]):\//,
+					(_, drive: string) => `/mnt/${drive.toLowerCase()}/`,
+				)
+
+				const wslArgs = ["--", "bash", "-c", command]
+
+				if (wslCwd !== forwardSlashedCwd) {
+					// Drive path successfully converted — use --cd to set WSL working directory
+					wslArgs.unshift("--cd", wslCwd)
+				}
+
+				this.subprocess = execa(WSL_EXE_PATH, wslArgs, {
+					cwd: undefined,
+					all: true,
+					stdin: "ignore",
+					env: {
+						...process.env,
+						LANG: "en_US.UTF-8",
+						LC_ALL: "en_US.UTF-8",
+					},
+				})
+			} else {
+				this.subprocess = execa({
+					shell: effectiveShell,
+					cwd: this.terminal.getCurrentWorkingDirectory(),
+					all: true,
+					stdin: "ignore",
+					env: {
+						...process.env,
+						LANG: "en_US.UTF-8",
+						LC_ALL: "en_US.UTF-8",
+					},
+				})`${effectiveCommand}`
+			}
 
 			this.pid = this.subprocess.pid
 

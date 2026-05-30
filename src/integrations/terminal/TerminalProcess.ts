@@ -1,10 +1,7 @@
 import * as vscode from "vscode"
-import { inspect } from "util"
-
 import type { ExitCodeDetails } from "./types"
 import { BaseTerminalProcess } from "./BaseTerminalProcess"
 import { Terminal } from "./Terminal"
-
 export class TerminalProcess extends BaseTerminalProcess {
 	// #266: Some processes (interactive tools, programs that trap SIGINT and
 	// prompt for confirmation) need more than one Ctrl+C to actually exit. We
@@ -56,23 +53,16 @@ export class TerminalProcess extends BaseTerminalProcess {
 		const isShellIntegrationAvailable = terminal.shellIntegration && terminal.shellIntegration.executeCommand
 
 		if (!isShellIntegrationAvailable) {
-			terminal.sendText(command, true)
-
 			console.warn(
-				"[TerminalProcess] Shell integration not available. Command sent without knowledge of response.",
+				"[TerminalProcess] Shell integration not available — NOT using sendText " +
+					"(would execute without output capture). Falling back to inline (execa) execution.",
 			)
 
 			this.emit(
 				"no_shell_integration",
-				"Command was submitted; output is not available, as shell integration is inactive.",
+				"Shell integration is inactive; falling back to inline (execa) execution.",
 			)
 
-			this.emit(
-				"completed",
-				"<shell integration is not available, so terminal output and command execution status is unknown>",
-			)
-
-			this.emit("continue")
 			return
 		}
 
@@ -82,11 +72,10 @@ export class TerminalProcess extends BaseTerminalProcess {
 				// Remove event listener to prevent memory leaks
 				this.removeAllListeners("stream_available")
 
-				// Emit no_shell_integration event with descriptive message
-				this.emit(
-					"no_shell_integration",
-					`VSCE shell integration stream did not start within ${Terminal.getShellIntegrationTimeout() / 1000} seconds. Terminal problem?`,
-				)
+				// NOTE: Do NOT emit "no_shell_integration" here — the command was
+				// already submitted via executeCommand() and will run (or is running)
+				// in the external terminal. Emitting "no_shell_integration" would
+				// cause ExecuteCommandTool to re-execute via execa (double execution).
 
 				// Reject with descriptive error
 				reject(
@@ -221,27 +210,16 @@ export class TerminalProcess extends BaseTerminalProcess {
 			// Emit any remaining output before completing
 			this.emitRemainingBufferIfListening()
 		} else {
-			const errorMsg =
-				"VSCE output start escape sequence (]633;C or ]133;C) not received, but the stream has started. Upstream VSCE Bug?"
-
-			const inspectPreOutput = inspect(preOutput, { colors: false, breakLength: Infinity })
-			console.error(`[Terminal Process] ${errorMsg} preOutput: ${inspectPreOutput}`)
-
-			// Emit no_shell_integration event
-			this.emit("no_shell_integration", errorMsg)
-
-			// Emit completed event with error message
-			this.emit(
-				"completed",
-				"<VSCE shell integration markers not found: terminal output and command execution status is unknown>\n" +
-					`<preOutput>${inspectPreOutput}</preOutput>\n` +
-					"AI MODEL: You MUST notify the user with the information above so they can open a bug report.",
-			)
-
-			this.continue()
-
-			// Return early since we can't process output without shell integration markers
-			return
+			// The command executed via executeCommand() (shell integration IS available),
+			// but the stream didn't contain the expected ]633;C / ]133;C start marker.
+			// This happens on WSL where the PTY bridge can reorder or omit markers.
+			// Since the command already ran in the external terminal, falling back to
+			// execa would cause double execution. Instead, treat all stream data as
+			// command output and complete normally.
+			// Use the preOutput as the command output — it contains the actual
+			// command result even if the markers were stripped by the WSL PTY bridge.
+			this.fullOutput = preOutput
+			this.emitRemainingBufferIfListening()
 		}
 
 		// fullOutput begins after C marker so we only need to trim off D marker

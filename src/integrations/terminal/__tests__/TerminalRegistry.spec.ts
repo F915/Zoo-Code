@@ -3,8 +3,6 @@
 import * as vscode from "vscode"
 import { Terminal } from "../Terminal"
 import { TerminalRegistry } from "../TerminalRegistry"
-import * as shellUtils from "../../../utils/shell"
-
 const PAGER = process.platform === "win32" ? "" : "cat"
 
 vi.mock("execa", () => ({
@@ -36,7 +34,6 @@ describe("TerminalRegistry", () => {
 				}) as any,
 		)
 
-		vi.spyOn(shellUtils, "getShell").mockReturnValue("/mock/fallback-shell")
 	})
 
 	afterEach(() => {
@@ -57,7 +54,6 @@ describe("TerminalRegistry", () => {
 					VTE_VERSION: "0",
 					PROMPT_EOL_MARK: "",
 				},
-				shellPath: "/mock/fallback-shell",
 			})
 		})
 
@@ -80,8 +76,7 @@ describe("TerminalRegistry", () => {
 						VTE_VERSION: "0",
 						PROMPT_EOL_MARK: "",
 					},
-					shellPath: "/mock/fallback-shell",
-				})
+					})
 			} finally {
 				// Restore original delay
 				Terminal.setCommandDelay(originalDelay)
@@ -104,8 +99,7 @@ describe("TerminalRegistry", () => {
 						PROMPT_EOL_MARK: "",
 						ITERM_SHELL_INTEGRATION_INSTALLED: "Yes",
 					},
-					shellPath: "/mock/fallback-shell",
-				})
+					})
 			} finally {
 				Terminal.setTerminalZshOhMy(false)
 			}
@@ -127,8 +121,7 @@ describe("TerminalRegistry", () => {
 						PROMPT_EOL_MARK: "",
 						POWERLEVEL9K_TERM_SHELL_INTEGRATION: "true",
 					},
-					shellPath: "/mock/fallback-shell",
-				})
+					})
 			} finally {
 				Terminal.setTerminalZshP10k(false)
 			}

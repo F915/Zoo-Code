@@ -44,6 +44,9 @@ vi.mock("vscode", () => {
 			}
 			id: string
 		},
+		env: {
+			shell: "/bin/bash",
+		},
 		Uri: {
 			file: (path: string) => ({ fsPath: path }),
 		},

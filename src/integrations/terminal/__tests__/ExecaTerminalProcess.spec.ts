@@ -4,17 +4,21 @@ const mockPid = 12345
 
 vitest.mock("execa", () => {
 	const mockKill = vitest.fn()
-	const execa = vitest.fn((options: any) => {
-		return (_template: TemplateStringsArray, ...args: any[]) => ({
-			pid: mockPid,
-			iterable: (_opts: any) =>
-				(async function* () {
-					yield "test output\n"
-				})(),
-			kill: mockKill,
-		})
+	const makeResult = () => ({
+		pid: mockPid,
+		iterable: (_opts: any) =>
+			(async function* () {
+				yield "test output\n"
+			})(),
+		kill: mockKill,
 	})
-	return { execa, ExecaError: class extends Error {} }
+	const execa = vitest.fn((fileOrOptions: any, _args?: any, _options?: any) => {
+		if (typeof fileOrOptions === "string") {
+			return makeResult()
+		}
+		return (_template: TemplateStringsArray, ..._tArgs: any[]) => makeResult()
+	})
+	return { execa, ExecaError: class extends Error { } }
 })
 
 vitest.mock("ps-tree", () => ({
@@ -26,6 +30,7 @@ import { ExecaTerminalProcess } from "../ExecaTerminalProcess"
 import { BaseTerminal } from "../BaseTerminal"
 import type { RooTerminal } from "../types"
 import * as shellUtils from "../../../utils/shell"
+import { WSL_EXE_PATH } from "../../../utils/shell"
 
 describe("ExecaTerminalProcess", () => {
 	let mockTerminal: RooTerminal
@@ -117,6 +122,28 @@ describe("ExecaTerminalProcess", () => {
 				}),
 			)
 		})
+
+		it("should use direct execa(file, args, options) for WSL to avoid cmd.exe nesting", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("C:/test/cwd")
+
+			await terminalProcess.run('echo "hello wsl"')
+
+			const execaMock = vitest.mocked(execa)
+			expect(execaMock).toHaveBeenCalledWith(
+				WSL_EXE_PATH,
+				["--cd", "/mnt/c/test/cwd", "--", "bash", "-c", 'echo "hello wsl"'],
+				expect.objectContaining({
+					cwd: undefined,
+					all: true,
+					env: expect.objectContaining({
+						LANG: "en_US.UTF-8",
+						LC_ALL: "en_US.UTF-8",
+					}),
+				}),
+			)
+		})
 	})
 
 	describe("basic functionality", () => {
@@ -148,24 +175,19 @@ describe("ExecaTerminalProcess", () => {
 
 	describe("trimRetrievedOutput", () => {
 		it("clears buffer when all output has been retrieved", () => {
-			// Set up a scenario where all output has been retrieved
 			terminalProcess["fullOutput"] = "test output data"
-			terminalProcess["lastRetrievedIndex"] = 16 // Same as fullOutput.length
-
-			// Access the protected method through type casting
-			;(terminalProcess as any).trimRetrievedOutput()
+			terminalProcess["lastRetrievedIndex"] = 16
+				; (terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)
 		})
 
 		it("does not clear buffer when there is unretrieved output", () => {
-			// Set up a scenario where not all output has been retrieved
 			terminalProcess["fullOutput"] = "test output data"
-			terminalProcess["lastRetrievedIndex"] = 5 // Less than fullOutput.length
-			;(terminalProcess as any).trimRetrievedOutput()
+			terminalProcess["lastRetrievedIndex"] = 5
+				; (terminalProcess as any).trimRetrievedOutput()
 
-			// Buffer should NOT be cleared - there's still unretrieved content
 			expect(terminalProcess["fullOutput"]).toBe("test output data")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(5)
 		})
@@ -173,17 +195,16 @@ describe("ExecaTerminalProcess", () => {
 		it("does nothing when buffer is already empty", () => {
 			terminalProcess["fullOutput"] = ""
 			terminalProcess["lastRetrievedIndex"] = 0
-			;(terminalProcess as any).trimRetrievedOutput()
+				; (terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)
 		})
 
 		it("clears buffer when lastRetrievedIndex exceeds fullOutput length", () => {
-			// Edge case: index is greater than current length (could happen if output was modified)
 			terminalProcess["fullOutput"] = "short"
 			terminalProcess["lastRetrievedIndex"] = 100
-			;(terminalProcess as any).trimRetrievedOutput()
+				; (terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)

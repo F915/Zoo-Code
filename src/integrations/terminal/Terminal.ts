@@ -1,28 +1,102 @@
 import * as vscode from "vscode"
-import pWaitFor from "p-wait-for"
 
 import type { RooTerminalCallbacks, RooTerminalProcessResultPromise } from "./types"
 import { BaseTerminal } from "./BaseTerminal"
 import { TerminalProcess } from "./TerminalProcess"
 import { ShellIntegrationManager } from "./ShellIntegrationManager"
 import { mergePromise } from "./mergePromise"
-import { getShell } from "../../utils/shell"
+import { getWslProfile } from "../../utils/shell"
 
 export class Terminal extends BaseTerminal {
 	public terminal: vscode.Terminal
 
 	public cmdCounter: number = 0
 
+	// Promise that resolves once shell integration is ready (or times out).
+	// Uses the onDidChangeTerminalShellIntegration event for instant detection
+	// when shell integration activates, with a timeout as safety net.
+	private shellIntegrationReady: Promise<void>
+
 	constructor(id: number, terminal: vscode.Terminal | undefined, cwd: string) {
 		super("vscode", id, cwd)
 
 		const env = Terminal.getEnv()
 		const iconPath = new vscode.ThemeIcon("rocket")
-		this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env, shellPath: getShell() })
+
+		const wslProfile = getWslProfile()
+
+		// For WSL, do NOT pass explicit shellPath/shellArgs — let VS Code use
+		// its default profile which has source:"WSL" (or auto-detects WSL via
+		// the profile path). Explicitly passing shellPath bypasses the profile
+		// system and prevents VS Code from injecting WSL shell integration.
+		if (wslProfile) {
+			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env })
+		} else if (BaseTerminal.getExecaShellPath()) {
+			const shell = BaseTerminal.getExecaShellPath()!
+			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env, shellPath: shell })
+		} else {
+			this.terminal = terminal ?? vscode.window.createTerminal({ cwd, name: "Roo Code", iconPath, env })
+		}
 
 		if (Terminal.getTerminalZdotdir()) {
 			ShellIntegrationManager.terminalTmpDirs.set(id, env.ZDOTDIR)
 		}
+
+		// Wait for shell integration using both the VS Code event (instant)
+		// and polling. Both run within the user-configured timeout — no hidden
+		// extension. WSL terminals also follow this path: shell integration is
+		// not supported for WSL (OSC 633 sequences don't traverse the PTY
+		// bridge), so the timeout will fire naturally and runCommand falls
+		// through to the execa fallback.
+		this.shellIntegrationReady = new Promise<void>((resolve) => {
+			// Already ready?
+			if (this.terminal.shellIntegration) {
+				resolve()
+				return
+			}
+
+			const timeout = Terminal.getShellIntegrationTimeout()
+
+			let settled = false
+			const done = () => {
+				if (settled) return
+				settled = true
+				clearTimeout(timeoutId)
+				clearInterval(pollInterval)
+				eventDisposable.dispose()
+				resolve()
+			}
+
+			// Event-based detection: fires instantly when shell integration activates.
+			// Check shellIntegration (not .executeCommand) — matching original
+			// pWaitFor behavior. If we check .executeCommand, a brief window between
+			// shellIntegration being set and executeCommand being ready would cause us
+			// to miss the activation entirely (no more events fire, only timeout).
+			const eventDisposable = vscode.window.onDidChangeTerminalShellIntegration((e) => {
+				if (e.terminal === this.terminal && this.terminal.shellIntegration) {
+					done()
+				}
+			})
+
+			// Polling fallback: same loose check as original pWaitFor so that
+			// non-WSL shells (Git Bash, pwsh) correctly detect shell integration
+			// activation even when events fire out of order.
+			const pollInterval = setInterval(() => {
+				if (this.terminal.shellIntegration) {
+					done()
+				}
+			}, 500)
+
+			// Safety-net timeout: if shell integration never activates within the
+			// configured time (e.g. WSL), resolve anyway.
+			const timeoutId = setTimeout(() => done(), timeout)
+		})
+
+		// Clean up ZDOTDIR temp directory once shell integration is ready
+		// (or on timeout). Covers all shell types including WSL.
+		this.shellIntegrationReady.finally(() => {
+			ShellIntegrationManager.zshCleanupTmpDir(this.id)
+		})
 	}
 
 	/**
@@ -61,35 +135,18 @@ export class Terminal extends BaseTerminal {
 		process.once("no_shell_integration", (msg) => callbacks.onNoShellIntegration?.(msg, process))
 
 		const promise = new Promise<void>((resolve, reject) => {
-			// Set up event handlers
 			process.once("continue", () => resolve())
 			process.once("error", (error) => {
 				console.error(`[Terminal ${this.id}] error:`, error)
 				reject(error)
 			})
 
-			// Wait for shell integration before executing the command
-			pWaitFor(() => this.terminal.shellIntegration !== undefined, {
-				timeout: Terminal.getShellIntegrationTimeout(),
+			// Reuse the shell-integration-ready promise started in the
+			// constructor — the wait has already been running since
+			// terminal creation, so by now it may already be resolved.
+			this.shellIntegrationReady.then(() => {
+				process.run(command)
 			})
-				.then(() => {
-					// Clean up temporary directory if shell integration is available, zsh did its job:
-					ShellIntegrationManager.zshCleanupTmpDir(this.id)
-
-					// Run the command in the terminal
-					process.run(command)
-				})
-				.catch(() => {
-					console.log(`[Terminal ${this.id}] Shell integration not available. Command execution aborted.`)
-
-					// Clean up temporary directory if shell integration is not available
-					ShellIntegrationManager.zshCleanupTmpDir(this.id)
-
-					process.emit(
-						"no_shell_integration",
-						`Shell integration initialization sequence '\\x1b]633;A' was not received within ${Terminal.getShellIntegrationTimeout() / 1000}s. Shell integration has been disabled for this terminal instance. Increase the timeout in the settings if necessary.`,
-					)
-				})
 		})
 
 		return mergePromise(process, promise)

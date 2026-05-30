@@ -49,6 +49,9 @@ vi.mock("vscode", () => {
 			}
 			id: string
 		},
+		env: {
+			shell: "C:/Program Files/PowerShell/7/pwsh.exe",
+		},
 		Uri: {
 			file: (path: string) => ({ fsPath: path }),
 		},

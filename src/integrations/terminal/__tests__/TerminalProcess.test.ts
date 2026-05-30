@@ -12,6 +12,9 @@ vi.mock("vscode", () => ({
 			get: vi.fn(),
 		}),
 	},
+	env: {
+		shell: "",
+	},
 	ThemeIcon: vi.fn(),
 }))
 
@@ -37,6 +40,10 @@ describe("TerminalProcess ANSI Handling", () => {
 
 		const terminalInfo = new Terminal(1, mockTerminal, "/tmp")
 		terminalProcess = new TerminalProcess(terminalInfo)
+	})
+
+	afterEach(() => {
+		vi.clearAllMocks()
 	})
 
 	describe("removeVSCodeShellIntegration", () => {
@@ -83,5 +90,6 @@ describe("TerminalProcess ANSI Handling", () => {
 			const result = terminalProcess.stripCursorSequences(input)
 			expect(result).toBe("\x1B[31mred\x1B[32mgreen")
 		})
+
 	})
 })
