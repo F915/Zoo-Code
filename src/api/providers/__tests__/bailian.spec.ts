@@ -248,3 +248,16 @@ describe("BailianHandler", () => {
 	})
 
 })
+		it("should throw when Frankfurt region is used without workspaceId", () => {
+			expect(
+				() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "frankfurt" }),
+			).toThrow()
+		})
+
+		it("should throw when Hong Kong region is used without workspaceId", () => {
+			expect(
+				() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "hongkong" }),
+			).toThrow()
+		})
+
+

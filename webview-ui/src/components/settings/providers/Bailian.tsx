@@ -233,7 +233,7 @@ export const Bailian = ({
 					<div>
 						<div className="flex items-center gap-1">
 							<Checkbox
-								checked={customInfo?.supportsPromptCache ?? false}
+								checked={customInfo?.supportsPromptCache ?? defaultInfo.supportsPromptCache ?? false}
 								onChange={handleInputChange("bailianCustomModelInfo", (checked) => {
 									return {
 										...(customInfo || makeBase()),
