@@ -33,6 +33,7 @@ import {
 	opencodeGoDefaultModelId,
 	minimaxDefaultModelId,
 	mimoDefaultModelId,
+	bailianDefaultModelId,
 	unboundDefaultModelId,
 } from "@roo-code/types"
 
@@ -97,6 +98,7 @@ import {
 	OpenCodeGo,
 	MiniMax,
 	Mimo,
+	Bailian,
 } from "./providers"
 
 import { MODELS_BY_PROVIDER, PROVIDERS } from "./constants"
@@ -349,6 +351,7 @@ const ApiOptions = ({
 				moonshot: { field: "apiModelId", default: moonshotDefaultModelId },
 				minimax: { field: "apiModelId", default: minimaxDefaultModelId },
 				mimo: { field: "apiModelId", default: mimoDefaultModelId },
+				bailian: { field: "apiModelId", default: bailianDefaultModelId },
 				mistral: { field: "apiModelId", default: mistralDefaultModelId },
 				xai: { field: "apiModelId", default: xaiDefaultModelId },
 				baseten: { field: "apiModelId", default: basetenDefaultModelId },
@@ -639,6 +642,16 @@ const ApiOptions = ({
 
 					{selectedProvider === "mimo" && (
 						<Mimo apiConfiguration={apiConfiguration} setApiConfigurationField={setApiConfigurationField} />
+					)}
+
+					{selectedProvider === "bailian" && (
+						<Bailian
+							apiConfiguration={apiConfiguration}
+							setApiConfigurationField={setApiConfigurationField}
+							organizationAllowList={organizationAllowList}
+							modelValidationError={modelValidationError}
+							simplifySettings={fromWelcomeView}
+						/>
 					)}
 
 					{selectedProvider === "vscode-lm" && (

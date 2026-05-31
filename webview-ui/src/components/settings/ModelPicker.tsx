@@ -66,6 +66,8 @@ interface ModelPickerProps {
 	displayTransform?: (value: unknown) => string
 	/** Callback when model changes - useful for side effects like clearing related fields */
 	onModelChange?: (modelId: string) => void
+	/** Hide the "search free" hint in the automatic fetch message (for providers without free models) */
+	hideFreeSearchHint?: boolean
 }
 
 export const ModelPicker = ({
@@ -84,6 +86,7 @@ export const ModelPicker = ({
 	valueTransform,
 	displayTransform,
 	onModelChange,
+	hideFreeSearchHint,
 }: ModelPickerProps) => {
 	const { t } = useAppTranslation()
 
@@ -306,7 +309,9 @@ export const ModelPicker = ({
 					{!hidePricing && apiConfiguration.apiProvider !== "mimo" && (
 						<div className="text-sm text-vscode-descriptionForeground" data-testid="automatic-fetch-hint">
 							<Trans
-								i18nKey="settings:modelPicker.automaticFetch"
+								i18nKey={hideFreeSearchHint
+									? "settings:modelPicker.automaticFetchNoFree"
+									: "settings:modelPicker.automaticFetch"}
 								components={{
 									serviceLink: <VSCodeLink href={serviceUrl} className="text-sm" />,
 									defaultModelLink: (

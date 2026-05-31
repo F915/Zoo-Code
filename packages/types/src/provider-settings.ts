@@ -21,6 +21,7 @@ import {
 	internationalZAiModels,
 	minimaxModels,
 	mimoModels,
+	bailianModels,
 } from "./providers/index.js"
 
 /**
@@ -123,6 +124,7 @@ export const providerNames = [
 	"moonshot",
 	"minimax",
 	"mimo",
+	"bailian",
 	"openai-codex",
 	"openai-native",
 	"qwen-code",
@@ -348,6 +350,15 @@ const mimoSchema = apiModelIdProviderModelSchema.extend({
 	mimoApiKey: z.string().optional(),
 })
 
+const bailianSchema = apiModelIdProviderModelSchema.extend({
+	bailianApiKey: z.string().optional(),
+	bailianRegion: z
+		.enum(["beijing", "singapore", "virginia", "frankfurt", "hongkong", "coding-plan", "token-plan", "token-plan-sgp"])
+		.optional(),
+	bailianWorkspaceId: z.string().optional(),
+	bailianCustomModelInfo: modelInfoSchema.nullish(),
+})
+
 const requestySchema = baseProviderSettingsSchema.extend({
 	requestyBaseUrl: z.string().optional(),
 	requestyApiKey: z.string().optional(),
@@ -432,6 +443,7 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	moonshotSchema.merge(z.object({ apiProvider: z.literal("moonshot") })),
 	minimaxSchema.merge(z.object({ apiProvider: z.literal("minimax") })),
 	mimoSchema.merge(z.object({ apiProvider: z.literal("mimo") })),
+	bailianSchema.merge(z.object({ apiProvider: z.literal("bailian") })),
 	requestySchema.merge(z.object({ apiProvider: z.literal("requesty") })),
 	unboundSchema.merge(z.object({ apiProvider: z.literal("unbound") })),
 	fakeAiSchema.merge(z.object({ apiProvider: z.literal("fake-ai") })),
@@ -467,6 +479,7 @@ export const providerSettingsSchema = z.object({
 	...moonshotSchema.shape,
 	...minimaxSchema.shape,
 	...mimoSchema.shape,
+	...bailianSchema.shape,
 	...requestySchema.shape,
 	...unboundSchema.shape,
 	...fakeAiSchema.shape,
@@ -543,6 +556,7 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	moonshot: "apiModelId",
 	minimax: "apiModelId",
 	mimo: "apiModelId",
+	bailian: "apiModelId",
 	deepseek: "apiModelId",
 	poe: "apiModelId",
 	"qwen-code": "apiModelId",
@@ -634,6 +648,11 @@ export const MODELS_BY_PROVIDER: Record<
 		id: "mimo",
 		label: "Xiaomi MiMo",
 		models: Object.keys(mimoModels),
+	},
+	bailian: {
+		id: "bailian",
+		label: "Bailian (Alibaba Cloud)",
+		models: Object.keys(bailianModels),
 	},
 	"openai-codex": {
 		id: "openai-codex",

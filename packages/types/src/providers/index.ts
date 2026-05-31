@@ -26,6 +26,8 @@ export * from "./opencode-go.js"
 export * from "./zai.js"
 export * from "./minimax.js"
 export * from "./mimo.js"
+export * from "./bailian.js"
+export * from "./bailian-pricing.js"
 
 import { anthropicDefaultModelId } from "./anthropic.js"
 import { basetenDefaultModelId } from "./baseten.js"
@@ -51,6 +53,7 @@ import { opencodeGoDefaultModelId } from "./opencode-go.js"
 import { internationalZAiDefaultModelId, mainlandZAiDefaultModelId } from "./zai.js"
 import { minimaxDefaultModelId } from "./minimax.js"
 import { mimoDefaultModelId } from "./mimo.js"
+import { bailianDefaultModelId } from "./bailian.js"
 
 // Import the ProviderName type from provider-settings to avoid duplication
 import type { ProviderName } from "../provider-settings.js"
@@ -89,6 +92,8 @@ export function getProviderDefaultModelId(
 			return minimaxDefaultModelId
 		case "mimo":
 			return mimoDefaultModelId
+		case "bailian":
+			return bailianDefaultModelId
 		case "zai":
 			return options?.isChina ? mainlandZAiDefaultModelId : internationalZAiDefaultModelId
 		case "openai-native":

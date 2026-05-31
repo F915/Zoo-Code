@@ -35,6 +35,7 @@ import {
 	OpencodeGoHandler,
 	MiniMaxHandler,
 	MimoHandler,
+	BailianHandler,
 	BasetenHandler,
 } from "./providers"
 import { NativeOllamaHandler } from "./providers/native-ollama"
@@ -171,6 +172,8 @@ export function buildApiHandler(configuration: ProviderSettings): ApiHandler {
 			return new SambaNovaHandler(options)
 		case "mimo":
 			return new MimoHandler(options)
+		case "bailian":
+			return new BailianHandler(options)
 		case "zai":
 			return new ZAiHandler(options)
 		case "fireworks":

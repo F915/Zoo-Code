@@ -17,6 +17,7 @@ import {
 	minimaxDefaultModelId,
 	basetenDefaultModelId,
 	mimoDefaultModelId,
+	bailianDefaultModelId,
 } from "@roo-code/types"
 
 import { MODELS_BY_PROVIDER } from "../constants"
@@ -42,6 +43,7 @@ export const PROVIDER_SERVICE_CONFIG: Partial<Record<ProviderName, ProviderServi
 	fireworks: { serviceName: "Fireworks AI", serviceUrl: "https://fireworks.ai" },
 	minimax: { serviceName: "MiniMax", serviceUrl: "https://minimax.chat" },
 	mimo: { serviceName: "Xiaomi MiMo", serviceUrl: "https://platform.xiaomimimo.com" },
+	bailian: { serviceName: "Bailian (Alibaba Cloud)", serviceUrl: "https://bailian.console.aliyun.com" },
 	baseten: { serviceName: "Baseten", serviceUrl: "https://baseten.co" },
 	ollama: { serviceName: "Ollama", serviceUrl: "https://ollama.ai" },
 	lmstudio: { serviceName: "LM Studio", serviceUrl: "https://lmstudio.ai/docs" },
@@ -67,6 +69,7 @@ export const PROVIDER_DEFAULT_MODEL_IDS: Partial<Record<ProviderName, string>> =
 	fireworks: fireworksDefaultModelId,
 	minimax: minimaxDefaultModelId,
 	mimo: mimoDefaultModelId,
+	bailian: bailianDefaultModelId,
 	baseten: basetenDefaultModelId,
 }
 
@@ -119,6 +122,7 @@ export const isStaticModelProvider = (provider: ProviderName): boolean => {
  * and should not use the generic ModelPicker in ApiOptions
  */
 export const PROVIDERS_WITH_CUSTOM_MODEL_UI: ProviderName[] = [
+	"bailian",
 	"openrouter",
 	"requesty",
 	"unbound",
