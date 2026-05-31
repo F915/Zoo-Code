@@ -140,6 +140,14 @@ export const ThinkingBudget = ({ apiConfiguration, setApiConfigurationField, mod
 		setApiConfigurationField,
 	])
 
+	// Initialize enableReasoningEffort for binary reasoning models so the
+	// checkbox reflects the API handler's default (thinking enabled).
+	useEffect(() => {
+		if (isReasoningSupported && apiConfiguration.enableReasoningEffort === undefined) {
+			setApiConfigurationField("enableReasoningEffort", true, false)
+		}
+	}, [isReasoningSupported, apiConfiguration.enableReasoningEffort, setApiConfigurationField])
+
 	const enableReasoningEffort = apiConfiguration.enableReasoningEffort
 	const customMaxOutputTokens = apiConfiguration.modelMaxTokens || DEFAULT_HYBRID_REASONING_MODEL_MAX_TOKENS
 	const customMaxThinkingTokens =

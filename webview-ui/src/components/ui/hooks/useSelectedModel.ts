@@ -10,6 +10,8 @@ import {
 	moonshotModels,
 	minimaxModels,
 	mimoModels,
+	bailianModels,
+	bailianDefaultModelId,
 	geminiModels,
 	mistralModels,
 	openAiModelInfoSaneDefaults,
@@ -33,6 +35,7 @@ import {
 	isDynamicProvider,
 	isRetiredProvider,
 	getProviderDefaultModelId,
+	getBailianPrice,
 } from "@roo-code/types"
 
 import { useRouterModels } from "./useRouterModels"
@@ -118,6 +121,40 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 			(needLmStudio && lmStudioModels!.isError) ||
 			(needOllama && ollamaModels!.isError),
 	}
+}
+
+/**
+ * Per-provider pricing overrides.
+ *
+ * Each function receives (modelId, apiConfiguration) and returns a partial
+ * ModelInfo whose price fields (inputPrice, outputPrice, cacheReadsPrice,
+ * cacheWritesPrice) are merged OVER the static model definition.
+ *
+ * Add an entry here when a provider needs runtime-computed pricing (region-
+ * specific, volume-tiered, etc.) that cannot be expressed in static model data.
+ */
+const PROVIDER_PRICING_FNS: Partial<
+	Record<
+		ProviderName,
+		(modelId: string, config: ProviderSettings) => Partial<ModelInfo> | undefined
+	>
+> = {
+	bailian: (id, config) => {
+		const region = (config.bailianRegion ?? "beijing") as Parameters<typeof getBailianPrice>[1]
+		return getBailianPrice(id, region)
+	},
+}
+
+/** Apply per-provider pricing overrides on top of static baseInfo. */
+function resolveModelInfo(
+	baseInfo: ModelInfo | undefined,
+	provider: ProviderName,
+	modelId: string,
+	config: ProviderSettings,
+): ModelInfo | undefined {
+	if (!baseInfo) return undefined
+	const pricing = PROVIDER_PRICING_FNS[provider]?.(modelId, config)
+	return pricing ? { ...baseInfo, ...pricing } : baseInfo
 }
 
 function getSelectedModel({
@@ -255,6 +292,22 @@ function getSelectedModel({
 		case "mimo": {
 			const id = apiConfiguration.apiModelId ?? defaultModelId
 			const info = mimoModels[id as keyof typeof mimoModels] ?? mimoModels["mimo-v2.5-pro"]
+			return { id, info }
+		}
+		case "bailian": {
+			const id = apiConfiguration.apiModelId ?? defaultModelId
+			const baseInfo = bailianModels[id as keyof typeof bailianModels]
+			// Custom models: merge default model info with bailianCustomModelInfo,
+			// matching the API handler's getModel() fallback.
+			// Note: supportsReasoningBinary is inherited from the default model
+			// (qwen3.6-plus). Custom models that do not support enable_thinking
+			// should disable reasoning via the UI checkbox.
+			const effectiveInfo = baseInfo
+				?? {
+					...bailianModels[defaultModelId as keyof typeof bailianModels],
+					...(apiConfiguration.bailianCustomModelInfo || {}),
+				}
+			const info = resolveModelInfo(effectiveInfo, provider, id, apiConfiguration)
 			return { id, info }
 		}
 		case "zai": {
