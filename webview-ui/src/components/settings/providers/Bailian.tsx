@@ -145,6 +145,12 @@ export const Bailian = ({
 				errorMessage={modelValidationError}
 				simplifySettings={simplifySettings}
 				hideFreeSearchHint={true}
+				sortModels={(a, b) => {
+					const aPreset = Object.hasOwn(bailianModels, a)
+					const bPreset = Object.hasOwn(bailianModels, b)
+					if (aPreset !== bPreset) return aPreset ? -1 : 1
+					return a.localeCompare(b)
+				}}
 				onModelChange={(newModelId) =>
 					handleModelChangeSideEffects("bailian", newModelId, setApiConfigurationField)
 				}

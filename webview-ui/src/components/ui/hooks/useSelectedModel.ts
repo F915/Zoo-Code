@@ -292,12 +292,19 @@ function getSelectedModel({
 		}
 		case "bailian": {
 			const id = apiConfiguration.apiModelId ?? defaultModelId
-			const baseInfo = bailianModels[id as keyof typeof bailianModels]
-			// Custom models: merge default model info with bailianCustomModelInfo,
-			// matching the API handler's getModel() fallback.
-			// Note: supportsReasoningBinary is inherited from the default model
-			// (qwen3.6-plus). Custom models that do not support enable_thinking
-			// should disable reasoning via the UI checkbox.
+			// Look up in routerModels (API-fetched) first, then static presets.
+			// This ensures auto-fetched models show their actual parameters
+			// instead of falling back to the default model's metadata.
+			// Follows the same pattern as the deepseek case.
+			const routerInfo = routerModels.bailian?.[id]
+			const staticInfo = bailianModels[id as keyof typeof bailianModels]
+			const baseInfo = routerInfo ?? staticInfo
+			// Custom models (typed by user, not in any source): merge
+			// default model info with bailianCustomModelInfo, matching
+			// the API handler's getModel() fallback.
+			// Note: supportsReasoningBinary is inherited from the default
+			// model (qwen3.6-plus). Custom models that do not support
+			// enable_thinking should disable reasoning via the UI checkbox.
 			const effectiveInfo = baseInfo ?? {
 				...bailianModels[defaultModelId as keyof typeof bailianModels],
 				...(apiConfiguration.bailianCustomModelInfo || {}),

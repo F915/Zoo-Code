@@ -68,6 +68,8 @@ interface ModelPickerProps {
 	onModelChange?: (modelId: string) => void
 	/** Hide the "search free" hint in the automatic fetch message (for providers without free models) */
 	hideFreeSearchHint?: boolean
+	/** Optional custom sort for the model dropdown. Defaults to alphabetical (localeCompare). */
+	sortModels?: (a: string, b: string) => number
 }
 
 export const ModelPicker = ({
@@ -87,6 +89,7 @@ export const ModelPicker = ({
 	displayTransform,
 	onModelChange,
 	hideFreeSearchHint,
+	sortModels,
 }: ModelPickerProps) => {
 	const { t } = useAppTranslation()
 
@@ -134,7 +137,7 @@ export const ModelPicker = ({
 				{} as Record<string, ModelInfo>,
 			)
 
-		return Object.keys(availableModels).sort((a, b) => a.localeCompare(b))
+		return Object.keys(availableModels).sort(sortModels ?? ((a, b) => a.localeCompare(b)))
 	}, [models, activeProvider, organizationAllowList, selectedModelId])
 
 	const [searchValue, setSearchValue] = useState("")
