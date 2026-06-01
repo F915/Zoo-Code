@@ -98,6 +98,30 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			models = await getDeepSeekModels(options.baseUrl, options.apiKey)
 			break
 		case "bailian":
+			// NOTE: Bailian uses a provider-only cache key ("bailian")
+			// shared across all region endpoints. This is acceptable
+			// in practice because:
+			//
+			// 1. Most users stay on a single region — per-endpoint
+			//    model lists differ only rarely (primarily for
+			//    region-exclusive beta models).
+			// 2. Region switch always calls flushModels(refresh=true)
+			//    first, which fetches fresh data from the correct
+			//    endpoint before any stale cache could reach the UI.
+			// 3. The memory cache TTL is 5 minutes, so stale data
+			//    expires quickly on its own.
+			// 4. If the constructor detects a workspace-dependent URL,
+			//    the handler won't be built without a valid workspaceId
+			//    — the cache simply holds the last successfully fetched
+			//    list.
+			//
+			// If multi-region usage becomes common, the fix is to
+			// derive a cache key from the normalized baseUrl
+			// (e.g. "bailian:<normalizedBaseUrl>") so each endpoint
+			// gets its own cache entry. This was deferred to avoid
+			// risky signature changes to shared infrastructure
+			// (getModelsFromCache, writeModels, readModels,
+			// inFlightRefresh) that serve 10+ providers.
 			models = await getBailianModels(options.baseUrl, options.apiKey)
 			break
 		default: {

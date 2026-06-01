@@ -95,6 +95,10 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 		const staticInfo = this.providerModels[id]
 
 		// Tier 2: API-fetched cache (populated when bailianApiKey is configured)
+		// Shared cache key ("bailian") across all regions — see
+		// note in modelCache.ts case "bailian" for rationale. In
+		// short: region switch flushes the cache before any stale
+		// data reaches the UI, and the TTL is only 5 minutes.
 		const cachedModels = getModelsFromCache("bailian")
 		const cachedInfo = cachedModels?.[id]
 
