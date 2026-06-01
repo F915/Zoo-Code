@@ -1031,14 +1031,13 @@ export const webviewMessageHandler = async (
 
 			// Bailian is conditional on apiKey
 			const bailianApiKey = message?.values?.bailianApiKey ?? apiConfiguration.bailianApiKey
+			const bailianRegion = message?.values?.bailianRegion ?? apiConfiguration.bailianRegion
+			const bailianWorkspaceId = message?.values?.bailianWorkspaceId ?? apiConfiguration.bailianWorkspaceId
 
 			if (bailianApiKey) {
 				let bailianBaseUrl: string
 				try {
-					bailianBaseUrl = getBailianBaseUrl(
-						apiConfiguration.bailianRegion,
-						apiConfiguration.bailianWorkspaceId,
-					)
+					bailianBaseUrl = getBailianBaseUrl(bailianRegion, bailianWorkspaceId)
 				} catch (e) {
 					// Region requires workspaceId but none configured -- skip model fetching
 					console.warn(`[requestRouterModels] Bailian: ${e instanceof Error ? e.message : String(e)}`)
