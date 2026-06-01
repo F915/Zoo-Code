@@ -120,10 +120,20 @@ describe("Bailian Provider", function () {
 	/** @type {import("../../../src/extension/api").API} */
 	let api: any
 
+	/** @type {import("../../../src/extension/api").ProviderSettings} */
+	let originalConfig: any
+
 	before(async function () {
 		api = globalThis.api
 		if (!api) {
 			throw new Error("E2E API not found — ensure the test runner initializes globalThis.api")
+		}
+		originalConfig = await api.getConfiguration()
+	})
+
+	suiteTeardown(async function () {
+		if (originalConfig) {
+			await api.setConfiguration(originalConfig)
 		}
 	})
 
