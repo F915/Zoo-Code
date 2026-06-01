@@ -70,14 +70,18 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 	/**
 	 * Resolves the model ID and its complete metadata.
 	 *
-	 * Three-tier lookup:
-	 * 1. Static presets (`bailianModels`) — authoritative specs with pricing
-	 * 2. API-fetched cache — model list from DashScope /models endpoint
-	 * 3. Custom model fallback — user-provided {@linkcode bailianCustomModelInfo}
+	 * Metadata resolution (in priority order):
+	 * 1. Exact preset match (`bailianModels[id]`)
+	 * 2. API-fetched cache (`getModelsFromCache`)
+	 * 3. Canonicalized preset match (`findMatchingPreset` → preset key)
+	 *    — handles versioned/named-space IDs on cold start
+	 * 4. Default model fallback (`bailianDefaultModelId`)
 	 *
-	 * The model ID is trimmed of whitespace before lookup. Pricing is
-	 * canonicalized via {@linkcode findMatchingPreset} to handle
-	 * versioned/named-space API variants.
+	 * After the base metadata is resolved, pricing is canonicalized via
+	 * {@linkcode findMatchingPreset} and merged in. User-provided
+	 * {@linkcode bailianCustomModelInfo} is applied last as an override.
+	 *
+	 * The model ID is trimmed of whitespace before lookup.
 	 *
 	 * @returns An object with `id`, `info` ({@linkcode ModelInfo}), and
 	 *          computed parameters (maxTokens, temperature, etc.).
@@ -100,7 +104,17 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 		const price = getBailianPrice(canonicalKey, region)
 		const custom = this.bailianOptions.bailianCustomModelInfo as ModelInfo | undefined | null
 
-		const baseInfo = staticInfo ?? cachedInfo ?? this.providerModels[this.defaultProviderModelId]
+		// If findMatchingPreset resolved to a different key, use that
+		// preset's metadata before falling back to the default model.
+		// This ensures versioned/named-space IDs (e.g. "qwen3.7-max-2026-05-17"
+		// matching preset "qwen3.7-max") get the correct capabilities on cold start.
+		const matchedPresetInfo =
+			canonicalKey !== id && canonicalKey in this.providerModels
+				? this.providerModels[canonicalKey as BailianModelId]
+				: undefined
+
+		const baseInfo =
+			staticInfo ?? cachedInfo ?? matchedPresetInfo ?? this.providerModels[this.defaultProviderModelId]
 
 		const info: ModelInfo = { ...baseInfo, ...price, ...(custom || {}) }
 

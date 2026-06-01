@@ -489,6 +489,21 @@ describe("BailianHandler", () => {
 			expect(result.info.outputPrice).toBeDefined()
 		})
 
+		it("versioned variant gets canonical metadata (not default) on cold start", () => {
+			// Simulate cold start: no cache (getModelsFromCache returns undefined by default in beforeEach)
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "beijing",
+				apiModelId: "qwen3.7-max-2026-05-17",
+			})
+			const result = h.getModel()
+			// Versioned ID "qwen3.7-max-2026-05-17" matches preset "qwen3.7-max" via substring
+			expect(result.info.maxTokens).toBe(65536) // from qwen3.7-max preset
+			expect(result.info.contextWindow).toBe(1_000_000) // qwen3.7-max preset value
+			expect(result.info.supportsImages).toBe(false) // qwen3.7-max preset value
+			expect(result.info.supportsReasoningBinary).toBe(true) // qwen3.7-max preset value
+		})
+
 		it("custom model info overrides known model defaults", () => {
 			const h = new BailianHandler({
 				bailianApiKey: "test-key",
