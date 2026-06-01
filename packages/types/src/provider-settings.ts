@@ -44,6 +44,7 @@ export const dynamicProviders = [
 	"unbound",
 	"poe",
 	"deepseek",
+	"bailian",
 	"opencode-go",
 ] as const
 
@@ -353,7 +354,16 @@ const mimoSchema = apiModelIdProviderModelSchema.extend({
 const bailianSchema = apiModelIdProviderModelSchema.extend({
 	bailianApiKey: z.string().optional(),
 	bailianRegion: z
-		.enum(["beijing", "singapore", "virginia", "frankfurt", "hongkong", "coding-plan", "token-plan", "token-plan-sgp"])
+		.enum([
+			"beijing",
+			"singapore",
+			"virginia",
+			"frankfurt",
+			"hongkong",
+			"coding-plan",
+			"token-plan",
+			"token-plan-sgp",
+		])
 		.optional(),
 	bailianWorkspaceId: z.string().optional(),
 	bailianCustomModelInfo: modelInfoSchema.nullish(),

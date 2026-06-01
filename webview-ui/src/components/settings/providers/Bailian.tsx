@@ -6,6 +6,7 @@ import {
 	type ProviderSettings,
 	type ModelInfo,
 	type OrganizationAllowList,
+	type RouterModels,
 	bailianModels,
 	bailianDefaultModelId,
 } from "@roo-code/types"
@@ -29,6 +30,7 @@ type BailianProps = {
 	organizationAllowList: OrganizationAllowList
 	modelValidationError?: string
 	simplifySettings?: boolean
+	routerModels?: RouterModels
 }
 
 export const Bailian = ({
@@ -37,6 +39,7 @@ export const Bailian = ({
 	organizationAllowList,
 	modelValidationError,
 	simplifySettings,
+	routerModels,
 }: BailianProps) => {
 	const { t } = useAppTranslation()
 
@@ -51,11 +54,19 @@ export const Bailian = ({
 		[setApiConfigurationField],
 	)
 
-	const modelId = apiConfiguration.apiModelId ?? ""
-	const isCustomModel = !!(modelId && !(modelId in bailianModels))
+	// Merge API-fetched models with static presets.
+	// Static presets ("bailianModels") overwrite matching keys from routerModels
+	// to ensure known models always get authoritative specs. API models that
+	// don't match any preset appear as additional entries with conservative defaults.
+	const mergedModels = {
+		...(routerModels?.bailian ?? {}),
+		...bailianModels,
+	} as Record<string, ModelInfo>
+
+	const modelId = (apiConfiguration.apiModelId ?? "").trim()
+	const isCustomModel = !!(modelId && !Object.hasOwn(mergedModels, modelId))
 	const defaultInfo = bailianModels[bailianDefaultModelId]
 	const customInfo = (apiConfiguration?.bailianCustomModelInfo ?? undefined) as ModelInfo | undefined
-
 
 	// Helper: build a clean base for custom model info
 	const makeBase = () => {
@@ -79,7 +90,9 @@ export const Bailian = ({
 					<VSCodeOption value="hongkong">{t("settings:providers.bailianRegionHongKong")}</VSCodeOption>
 					<VSCodeOption value="coding-plan">{t("settings:providers.bailianRegionCodingPlan")}</VSCodeOption>
 					<VSCodeOption value="token-plan">{t("settings:providers.bailianRegionTokenPlan")}</VSCodeOption>
-					<VSCodeOption value="token-plan-sgp">{t("settings:providers.bailianRegionTokenPlanSgp")}</VSCodeOption>
+					<VSCodeOption value="token-plan-sgp">
+						{t("settings:providers.bailianRegionTokenPlanSgp")}
+					</VSCodeOption>
 				</VSCodeDropdown>
 			</div>
 
@@ -124,7 +137,7 @@ export const Bailian = ({
 				apiConfiguration={apiConfiguration}
 				setApiConfigurationField={setApiConfigurationField}
 				defaultModelId={bailianDefaultModelId}
-				models={bailianModels as Record<string, ModelInfo>}
+				models={mergedModels}
 				modelIdKey="apiModelId"
 				serviceName="Bailian (Alibaba Cloud)"
 				serviceUrl="https://bailian.console.aliyun.com"
@@ -133,7 +146,7 @@ export const Bailian = ({
 				simplifySettings={simplifySettings}
 				hideFreeSearchHint={true}
 				onModelChange={(newModelId) =>
-				handleModelChangeSideEffects("bailian", newModelId, setApiConfigurationField)
+					handleModelChangeSideEffects("bailian", newModelId, setApiConfigurationField)
 				}
 			/>
 
@@ -240,7 +253,9 @@ export const Bailian = ({
 										supportsPromptCache: checked as boolean,
 									}
 								})}>
-								<span className="font-medium">{t("settings:providers.customModel.promptCache.label")}</span>
+								<span className="font-medium">
+									{t("settings:providers.customModel.promptCache.label")}
+								</span>
 							</Checkbox>
 							<StandardTooltip content={t("settings:providers.customModel.promptCache.description")}>
 								<i
@@ -260,7 +275,7 @@ export const Bailian = ({
 							value={
 								customInfo?.inputPrice !== undefined
 									? customInfo.inputPrice.toString()
-									: defaultInfo.inputPrice?.toString() ?? ""
+									: (defaultInfo.inputPrice?.toString() ?? "")
 							}
 							type="text"
 							style={{
@@ -284,7 +299,8 @@ export const Bailian = ({
 								<label className="block font-medium mb-1">
 									{t("settings:providers.customModel.pricing.input.label")}
 								</label>
-								<StandardTooltip content={t("settings:providers.customModel.pricing.input.description")}>
+								<StandardTooltip
+									content={t("settings:providers.customModel.pricing.input.description")}>
 									<i
 										className="codicon codicon-info text-vscode-descriptionForeground"
 										style={{ fontSize: "12px" }}
@@ -300,7 +316,7 @@ export const Bailian = ({
 							value={
 								customInfo?.outputPrice !== undefined
 									? customInfo.outputPrice.toString()
-									: defaultInfo.outputPrice?.toString() ?? ""
+									: (defaultInfo.outputPrice?.toString() ?? "")
 							}
 							type="text"
 							style={{
@@ -324,7 +340,8 @@ export const Bailian = ({
 								<label className="block font-medium mb-1">
 									{t("settings:providers.customModel.pricing.output.label")}
 								</label>
-								<StandardTooltip content={t("settings:providers.customModel.pricing.output.description")}>
+								<StandardTooltip
+									content={t("settings:providers.customModel.pricing.output.description")}>
 									<i
 										className="codicon codicon-info text-vscode-descriptionForeground"
 										style={{ fontSize: "12px" }}
@@ -363,7 +380,9 @@ export const Bailian = ({
 											{t("settings:providers.customModel.pricing.cacheReads.label")}
 										</span>
 										<StandardTooltip
-											content={t("settings:providers.customModel.pricing.cacheReads.description")}>
+											content={t(
+												"settings:providers.customModel.pricing.cacheReads.description",
+											)}>
 											<i
 												className="codicon codicon-info text-vscode-descriptionForeground"
 												style={{ fontSize: "12px" }}
@@ -398,7 +417,9 @@ export const Bailian = ({
 											{t("settings:providers.customModel.pricing.cacheWrites.label")}
 										</label>
 										<StandardTooltip
-											content={t("settings:providers.customModel.pricing.cacheWrites.description")}>
+											content={t(
+												"settings:providers.customModel.pricing.cacheWrites.description",
+											)}>
 											<i
 												className="codicon codicon-info text-vscode-descriptionForeground"
 												style={{ fontSize: "12px" }}

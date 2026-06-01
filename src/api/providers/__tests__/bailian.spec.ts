@@ -6,6 +6,7 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import { type BailianModelId, bailianDefaultModelId, bailianModels } from "@roo-code/types"
 
 import { BailianHandler } from "../bailian"
+import { getModelsFromCache } from "../fetchers/modelCache"
 
 vitest.mock("openai", () => {
 	const createMock = vitest.fn()
@@ -13,6 +14,10 @@ vitest.mock("openai", () => {
 		default: vitest.fn(() => ({ chat: { completions: { create: createMock } } })),
 	}
 })
+
+vitest.mock("../fetchers/modelCache", () => ({
+	getModelsFromCache: vitest.fn(),
+}))
 
 describe("BailianHandler", () => {
 	let handler: BailianHandler
@@ -22,6 +27,7 @@ describe("BailianHandler", () => {
 		vitest.clearAllMocks()
 		mockCreate = (OpenAI as unknown as any)().chat.completions.create
 		handler = new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "beijing" })
+		vi.mocked(getModelsFromCache).mockReturnValue(undefined)
 	})
 
 	// --- Model ID handling (Mode B: ID passthrough) ---
@@ -50,6 +56,18 @@ describe("BailianHandler", () => {
 		expect(result.info.inputPrice).toBe(bailianModels[testModelId].inputPrice)
 		expect(result.info.outputPrice).toBe(bailianModels[testModelId].outputPrice)
 		expect(result.info.contextWindow).toBe(bailianModels[testModelId].contextWindow)
+	})
+
+	// --- getModel() returns getModelParams-computed fields ---
+
+	it("getModel returns maxTokens from getModelParams", () => {
+		const result = handler.getModel()
+		expect(result).toHaveProperty("maxTokens")
+	})
+
+	it("getModel returns temperature from getModelParams", () => {
+		const result = handler.getModel()
+		expect(result).toHaveProperty("temperature")
 	})
 
 	// --- Endpoint configuration ---
@@ -87,6 +105,16 @@ describe("BailianHandler", () => {
 		expect(OpenAI).toHaveBeenCalledWith(
 			expect.objectContaining({ baseURL: "https://hk-456.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1" }),
 		)
+	})
+
+	// --- Constructor error tests (previously outside describe block) ---
+
+	it("should throw when Frankfurt region is used without workspaceId", () => {
+		expect(() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "frankfurt" })).toThrow()
+	})
+
+	it("should throw when Hong Kong region is used without workspaceId", () => {
+		expect(() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "hongkong" })).toThrow()
 	})
 
 	// --- Streaming ---
@@ -147,9 +175,9 @@ describe("BailianHandler", () => {
 		expect(firstChunk.value).toMatchObject({ type: "usage", inputTokens: 10, outputTokens: 20 })
 	})
 
-	// --- Bailian-specific parameters ---
+	// --- Bailian-specific reasoning parameters ---
 
-	it("should include enable_thinking as top-level param when thinking is enabled", async () => {
+	it("should include enable_thinking as top-level param when thinking is enabled (binary model)", async () => {
 		const h = new BailianHandler({
 			bailianApiKey: "test-key",
 			enableReasoningEffort: true,
@@ -163,10 +191,7 @@ describe("BailianHandler", () => {
 		const generator = h.createMessage("system prompt", [])
 		await generator.next()
 
-		expect(mockCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ enable_thinking: true }),
-			undefined,
-		)
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ enable_thinking: true }), undefined)
 	})
 
 	it("should include thinking_budget when modelMaxThinkingTokens is set", async () => {
@@ -183,13 +208,10 @@ describe("BailianHandler", () => {
 		const generator = h.createMessage("system prompt", [])
 		await generator.next()
 
-		expect(mockCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ thinking_budget: 4096 }),
-			undefined,
-		)
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ thinking_budget: 4096 }), undefined)
 	})
 
-	it("should NOT include enable_thinking for MiniMax-M2.5 (thinking-only model)", async () => {
+	it("should NOT include enable_thinking for MiniMax-M2.5 (no reasoning flags in metadata)", async () => {
 		const h = new BailianHandler({
 			bailianApiKey: "test-key",
 			enableReasoningEffort: true,
@@ -207,7 +229,7 @@ describe("BailianHandler", () => {
 		expect(callArgs).not.toHaveProperty("enable_thinking")
 	})
 
-	it("should include reasoning_effort for DeepSeek V4 models", async () => {
+	it("should include reasoning_effort for DeepSeek V4 models (effort metadata)", async () => {
 		const h = new BailianHandler({
 			bailianApiKey: "test-key",
 			reasoningEffort: "high",
@@ -221,10 +243,7 @@ describe("BailianHandler", () => {
 		const generator = h.createMessage("system prompt", [])
 		await generator.next()
 
-		expect(mockCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ reasoning_effort: "high" }),
-			undefined,
-		)
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: "high" }), undefined)
 	})
 
 	it("should map xhigh reasoning_effort to max for DeepSeek V4", async () => {
@@ -241,23 +260,270 @@ describe("BailianHandler", () => {
 		const generator = h.createMessage("system prompt", [])
 		await generator.next()
 
-		expect(mockCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ reasoning_effort: "max" }),
-			undefined,
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: "max" }), undefined)
+	})
+
+	// --- Prompt caching ---
+
+	it("should inject cache_control in system message when supportsPromptCache is true", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			apiModelId: "qwen3.6-plus", // supportsPromptCache: true
+		})
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const generator = h.createMessage("system prompt", [])
+		await generator.next()
+
+		const callArgs = mockCreate.mock.calls[0][0]
+		const systemMsg = callArgs.messages[0]
+		expect(systemMsg.content).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "text",
+					cache_control: { type: "ephemeral" },
+				}),
+			]),
 		)
 	})
 
+	it("should inject cache_control in last user message", async () => {
+		const h = new BailianHandler({ bailianApiKey: "test-key", apiModelId: "qwen3.6-plus" })
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const userMsg: Anthropic.Messages.MessageParam = {
+			role: "user",
+			content: "Hello, do something",
+		}
+		const generator = h.createMessage("sys", [userMsg])
+		await generator.next()
+
+		const callArgs = mockCreate.mock.calls[0][0]
+		const lastUserMsg = [...callArgs.messages].reverse().find((m: any) => m.role === "user")
+		const lastTextPart = Array.isArray(lastUserMsg.content)
+			? lastUserMsg.content.filter((p: any) => p.type === "text").pop()
+			: undefined
+		expect(lastTextPart).toHaveProperty("cache_control", { type: "ephemeral" })
+	})
+
+	it("should NOT inject cache_control when supportsPromptCache is false", async () => {
+		// MiniMax-M2.5 has supportsPromptCache: false
+		const h = new BailianHandler({ bailianApiKey: "test-key", apiModelId: "MiniMax-M2.5" })
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const generator = h.createMessage("sys", [])
+		await generator.next()
+
+		const callArgs = mockCreate.mock.calls[0][0]
+		const systemContent = callArgs.messages[0].content
+		expect(typeof systemContent).toBe("string")
+	})
+
+	// --- supportsTemperature ---
+
+	it("should include temperature when supportsTemperature is true (normal path)", async () => {
+		const h = new BailianHandler({ bailianApiKey: "test-key", apiModelId: "qwen3.6-plus" })
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const generator = h.createMessage("sys", [])
+		await generator.next()
+
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ temperature: expect.any(Number) }), undefined)
+	})
+
+	// --- includeMaxTokens ---
+
+	it("should use max_completion_tokens when includeMaxTokens is true (not max_tokens)", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			includeMaxTokens: true,
+			modelMaxTokens: 16000,
+		})
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const generator = h.createMessage("sys", [])
+		await generator.next()
+
+		const callArgs = mockCreate.mock.calls[0][0]
+		expect(callArgs).toHaveProperty("max_completion_tokens", 16000)
+		// Must NOT have max_tokens when includeMaxTokens is true
+		expect(callArgs).not.toHaveProperty("max_tokens")
+	})
+
+	// --- completePrompt ---
+
+	it("completePrompt should use enable_thinking for binary reasoning models", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			enableReasoningEffort: true,
+			apiModelId: "qwen3.6-plus",
+		})
+
+		mockCreate.mockResolvedValueOnce({
+			choices: [{ message: { content: "Hello" } }],
+		})
+
+		await h.completePrompt("test prompt")
+
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ enable_thinking: true }))
+	})
+
+	it("completePrompt should NOT send thinking param for MiniMax-M2.5", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			enableReasoningEffort: true,
+			apiModelId: "MiniMax-M2.5",
+		})
+
+		mockCreate.mockResolvedValueOnce({
+			choices: [{ message: { content: "Hello" } }],
+		})
+
+		await h.completePrompt("test prompt")
+
+		const callArgs = mockCreate.mock.calls[0][0]
+		expect(callArgs).not.toHaveProperty("thinking")
+		expect(callArgs).not.toHaveProperty("enable_thinking")
+	})
+
+	describe("getModelsFromCache integration", () => {
+		it("uses cached model info when found (cache tier hit)", () => {
+			vi.mocked(getModelsFromCache).mockReturnValue({
+				"new-model": {
+					maxTokens: 999,
+					contextWindow: 5000,
+					supportsImages: true,
+					supportsPromptCache: false,
+				},
+			})
+
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "beijing",
+				apiModelId: "new-model",
+			})
+			const result = h.getModel()
+			expect(result.id).toBe("new-model")
+			expect(result.info.maxTokens).toBe(999)
+			expect(result.info.contextWindow).toBe(5000)
+			expect(result.info.supportsImages).toBe(true)
+		})
+
+		it("static preset overrides cache for same model ID", () => {
+			vi.mocked(getModelsFromCache).mockReturnValue({
+				"qwen3.6-plus": {
+					maxTokens: 1,
+					contextWindow: 999,
+					supportsImages: false,
+					supportsPromptCache: false,
+				},
+			})
+
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "beijing",
+				apiModelId: "qwen3.6-plus",
+			})
+			const result = h.getModel()
+			expect(result.info.maxTokens).toBe(65536)
+			expect(result.info.supportsImages).toBe(true)
+		})
+
+		it("falls back to custom model info when cache is empty", () => {
+			vi.mocked(getModelsFromCache).mockReturnValue({})
+
+			const customInfo = {
+				maxTokens: 500,
+				contextWindow: 10000,
+				supportsImages: false,
+				supportsPromptCache: true,
+			}
+
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "beijing",
+				apiModelId: "unknown-model",
+				bailianCustomModelInfo: customInfo,
+			})
+			const result = h.getModel()
+			expect(result.id).toBe("unknown-model")
+			expect(result.info.maxTokens).toBe(500)
+			expect(result.info.contextWindow).toBe(10000)
+		})
+
+		it("trims whitespace from model ID and recognizes known model", () => {
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "beijing",
+				apiModelId: "  qwen3.6-plus  ",
+			})
+			const result = h.getModel()
+			expect(result.id).toBe("qwen3.6-plus")
+			expect(result.info.maxTokens).toBe(65536)
+		})
+
+		it("versioned variant gets canonical pricing via findMatchingPreset", () => {
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "singapore",
+				apiModelId: "qwen3.7-max-2026-05-17",
+			})
+			const result = h.getModel()
+			expect(result.info.maxTokens).toBe(65536)
+			expect(result.info.inputPrice).toBeDefined()
+			expect(result.info.outputPrice).toBeDefined()
+		})
+
+		it("custom model info overrides known model defaults", () => {
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				bailianRegion: "beijing",
+				apiModelId: "qwen3.6-plus",
+				bailianCustomModelInfo: { maxTokens: 500, contextWindow: 10000 } as any,
+			})
+			const result = h.getModel()
+			expect(result.info.maxTokens).toBe(500)
+			expect(result.info.contextWindow).toBe(10000)
+		})
+
+		it("image-only message does not inject sentinel text", async () => {
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				apiModelId: "qwen3.6-plus",
+			})
+
+			mockCreate.mockImplementationOnce(() => ({
+				[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+			}))
+
+			const imageMsg: Anthropic.Messages.MessageParam = {
+				role: "user",
+				content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "aaa" } }],
+			}
+			const generator = h.createMessage("sys", [imageMsg])
+			await generator.next()
+
+			const callArgs = mockCreate.mock.calls[0][0]
+			const lastUserMsg = [...callArgs.messages].reverse().find((m: any) => m.role === "user")
+			const texts = Array.isArray(lastUserMsg.content)
+				? lastUserMsg.content.filter((p: any) => p.type === "text").map((p: any) => p.text)
+				: []
+			expect(texts).not.toContain("...")
+		})
+	})
 })
-		it("should throw when Frankfurt region is used without workspaceId", () => {
-			expect(
-				() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "frankfurt" }),
-			).toThrow()
-		})
-
-		it("should throw when Hong Kong region is used without workspaceId", () => {
-			expect(
-				() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "hongkong" }),
-			).toThrow()
-		})
-
-

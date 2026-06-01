@@ -11,7 +11,6 @@ import {
 	minimaxModels,
 	mimoModels,
 	bailianModels,
-	bailianDefaultModelId,
 	geminiModels,
 	mistralModels,
 	openAiModelInfoSaneDefaults,
@@ -134,10 +133,7 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
  * specific, volume-tiered, etc.) that cannot be expressed in static model data.
  */
 const PROVIDER_PRICING_FNS: Partial<
-	Record<
-		ProviderName,
-		(modelId: string, config: ProviderSettings) => Partial<ModelInfo> | undefined
-	>
+	Record<ProviderName, (modelId: string, config: ProviderSettings) => Partial<ModelInfo> | undefined>
 > = {
 	bailian: (id, config) => {
 		const region = (config.bailianRegion ?? "beijing") as Parameters<typeof getBailianPrice>[1]
@@ -302,11 +298,10 @@ function getSelectedModel({
 			// Note: supportsReasoningBinary is inherited from the default model
 			// (qwen3.6-plus). Custom models that do not support enable_thinking
 			// should disable reasoning via the UI checkbox.
-			const effectiveInfo = baseInfo
-				?? {
-					...bailianModels[defaultModelId as keyof typeof bailianModels],
-					...(apiConfiguration.bailianCustomModelInfo || {}),
-				}
+			const effectiveInfo = baseInfo ?? {
+				...bailianModels[defaultModelId as keyof typeof bailianModels],
+				...(apiConfiguration.bailianCustomModelInfo || {}),
+			}
 			const info = resolveModelInfo(effectiveInfo, provider, id, apiConfiguration)
 			return { id, info }
 		}

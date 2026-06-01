@@ -68,6 +68,7 @@ import { getWorkspacePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { Mode, defaultModeSlug } from "../../shared/modes"
 import { getModels, flushModels } from "../../api/providers/fetchers/modelCache"
+import { getBailianBaseUrl } from "../../api/providers/bailian-region"
 import { GetModelsOptions } from "../../shared/api"
 import { generateSystemPrompt } from "./generateSystemPrompt"
 import { resolveDefaultSaveUri, saveLastExportPath } from "../../utils/export"
@@ -930,6 +931,7 @@ export const webviewMessageHandler = async (
 						poe: {},
 						deepseek: {},
 						"opencode-go": {},
+						bailian: {},
 					}
 
 			const safeGetModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
@@ -1025,6 +1027,32 @@ export const webviewMessageHandler = async (
 					key: "opencode-go",
 					options: { provider: "opencode-go", apiKey: opencodeGoApiKey },
 				})
+			}
+
+			// Bailian is conditional on apiKey
+			const bailianApiKey = message?.values?.bailianApiKey ?? apiConfiguration.bailianApiKey
+
+			if (bailianApiKey) {
+				let bailianBaseUrl: string
+				try {
+					bailianBaseUrl = getBailianBaseUrl(
+						apiConfiguration.bailianRegion,
+						apiConfiguration.bailianWorkspaceId,
+					)
+				} catch (e) {
+					// Region requires workspaceId but none configured -- skip model fetching
+					console.warn(`[requestRouterModels] Bailian: ${e instanceof Error ? e.message : String(e)}`)
+					bailianBaseUrl = ""
+				}
+
+				if (bailianBaseUrl) {
+					await flushModels({ provider: "bailian", apiKey: bailianApiKey, baseUrl: bailianBaseUrl }, true)
+
+					candidates.push({
+						key: "bailian",
+						options: { provider: "bailian", apiKey: bailianApiKey, baseUrl: bailianBaseUrl },
+					})
+				}
 			}
 
 			// Apply single provider filter if specified

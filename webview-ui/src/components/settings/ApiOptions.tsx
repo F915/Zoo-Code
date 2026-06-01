@@ -651,6 +651,7 @@ const ApiOptions = ({
 							organizationAllowList={organizationAllowList}
 							modelValidationError={modelValidationError}
 							simplifySettings={fromWelcomeView}
+							routerModels={routerModels}
 						/>
 					)}
 
