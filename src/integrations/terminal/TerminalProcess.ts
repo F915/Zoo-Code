@@ -5,9 +5,8 @@ import { Terminal } from "./Terminal"
 export class TerminalProcess extends BaseTerminalProcess {
 	// #266: Some processes (interactive tools, programs that trap SIGINT and
 	// prompt for confirmation) need more than one Ctrl+C to actually exit. We
-	// send Ctrl+C up to this many times in TOTAL — the immediate send in abort()
-	// plus retries — checking between sends whether the process has exited, before
-	// giving up and letting dispose() proceed.
+	// send Ctrl+C up to this many times in TOTAL. We check between sends whether
+	// the process has exited, before giving up and letting dispose() proceed.
 	private static readonly CTRL_C_SEND_LIMIT = 3
 	// Delay between Ctrl+C re-sends. Kept short so cancel stays responsive; the
 	// retry window is bounded by (CTRL_C_SEND_LIMIT - 1) * ABORT_RETRY_DELAY_MS.
@@ -251,17 +250,15 @@ export class TerminalProcess extends BaseTerminalProcess {
 			return
 		}
 
-		// Send SIGINT using CTRL+C.
-		this.terminal.terminal.sendText("\x03")
-
 		// #266: A single Ctrl+C isn't always enough — some processes trap SIGINT
 		// and keep running. Kick off a bounded retry that re-sends Ctrl+C a few
-		// times, verifying between attempts whether the process actually exited
-		// (terminal.busy flips to false on completion). This is intentionally
-		// fire-and-forget so it never blocks the synchronous cancel path; the
-		// total retry window is bounded so dispose() is never delayed for long.
+		// times, verifying between attempts whether the process actually exited.
+		// The aborting guard prevents duplicate Ctrl+C sends and overlapping retry
+		// loops from concurrent abort() calls — JS single-thread guarantees the
+		// check + set below are atomic (no await between them).
 		if (!this.aborting) {
 			this.aborting = true
+			this.terminal.terminal.sendText("\x03")
 			void this.retryAbort()
 				.finally(() => {
 					this.aborting = false

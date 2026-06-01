@@ -18,7 +18,7 @@ vitest.mock("execa", () => {
 		}
 		return (_template: TemplateStringsArray, ..._tArgs: any[]) => makeResult()
 	})
-	return { execa, ExecaError: class extends Error { } }
+	return { execa, ExecaError: class extends Error {} }
 })
 
 vitest.mock("ps-tree", () => ({
@@ -144,6 +144,112 @@ describe("ExecaTerminalProcess", () => {
 				}),
 			)
 		})
+
+		// Fix 3: execaShellPath should override WSL shell detection
+		it("should use execaShellPath instead of WSL when both are set", async () => {
+			BaseTerminal.setExecaShellPath("/bin/git-bash")
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("C:/test/cwd")
+
+			await terminalProcess.run("echo test")
+
+			const execaMock = vitest.mocked(execa)
+			expect(execaMock).toHaveBeenCalledWith(
+				expect.objectContaining({
+					shell: "/bin/git-bash",
+					cwd: "C:/test/cwd",
+				}),
+			)
+		})
+
+		// Fix 1: WSL UNC path stripping (\\wsl$\Distro\path → /path)
+		it("should convert \\\\wsl$\\ UNC path to WSL internal path", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\wsl$\\Ubuntu\\home\\project")
+
+			await terminalProcess.run("echo test")
+
+			const execaMock = vitest.mocked(execa)
+			expect(execaMock).toHaveBeenCalledWith(
+				WSL_EXE_PATH,
+				["--cd", "/home/project", "--", "bash", "-c", "echo test"],
+				expect.any(Object),
+			)
+		})
+
+		// Fix 1: wslpath fallback for non-WSL UNC paths
+		it("should use wslpath fallback for non-WSL UNC paths", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\fileserver\\share\\project")
+
+			const mockKill = vitest.fn()
+			const mockIterable = (_opts: any) =>
+				(async function* () {
+					yield "test output\n"
+				})()
+			vitest.mocked(execa).mockReset()
+			vitest
+				.mocked(execa)
+				.mockReturnValueOnce({
+					pid: mockPid,
+					stdout: "/mnt/share/project\n",
+					iterable: mockIterable,
+					kill: mockKill,
+				} as any)
+				.mockReturnValueOnce({
+					pid: mockPid + 1,
+					iterable: mockIterable,
+					kill: mockKill,
+				} as any)
+
+			await terminalProcess.run("echo test")
+
+			const execaMock = vitest.mocked(execa)
+			expect(execaMock).toHaveBeenNthCalledWith(
+				1,
+				WSL_EXE_PATH,
+				["wslpath", "\\\\fileserver\\share\\project"],
+				expect.objectContaining({ timeout: 5_000 }),
+			)
+			expect(execaMock).toHaveBeenNthCalledWith(
+				2,
+				WSL_EXE_PATH,
+				["--cd", "/mnt/share/project", "--", "bash", "-c", "echo test"],
+				expect.any(Object),
+			)
+		})
+
+		// Fix 1: skip --cd when wslpath fails
+		it("should skip --cd when wslpath fails", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\fileserver\\share\\project")
+
+			vitest.mocked(execa).mockReset()
+			vitest
+				.mocked(execa)
+				.mockRejectedValueOnce(new Error("wslpath failed"))
+				.mockReturnValueOnce({
+					pid: mockPid,
+					iterable: (_opts: any) =>
+						(async function* () {
+							yield "test output\n"
+						})(),
+					kill: vitest.fn(),
+				} as any)
+
+			await terminalProcess.run("echo test")
+
+			const execaMock = vitest.mocked(execa)
+			expect(execaMock).toHaveBeenNthCalledWith(
+				2,
+				WSL_EXE_PATH,
+				["--", "bash", "-c", "echo test"],
+				expect.any(Object),
+			)
+		})
 	})
 
 	describe("basic functionality", () => {
@@ -177,7 +283,7 @@ describe("ExecaTerminalProcess", () => {
 		it("clears buffer when all output has been retrieved", () => {
 			terminalProcess["fullOutput"] = "test output data"
 			terminalProcess["lastRetrievedIndex"] = 16
-				; (terminalProcess as any).trimRetrievedOutput()
+			;(terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)
@@ -186,7 +292,7 @@ describe("ExecaTerminalProcess", () => {
 		it("does not clear buffer when there is unretrieved output", () => {
 			terminalProcess["fullOutput"] = "test output data"
 			terminalProcess["lastRetrievedIndex"] = 5
-				; (terminalProcess as any).trimRetrievedOutput()
+			;(terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("test output data")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(5)
@@ -195,7 +301,7 @@ describe("ExecaTerminalProcess", () => {
 		it("does nothing when buffer is already empty", () => {
 			terminalProcess["fullOutput"] = ""
 			terminalProcess["lastRetrievedIndex"] = 0
-				; (terminalProcess as any).trimRetrievedOutput()
+			;(terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)
@@ -204,7 +310,7 @@ describe("ExecaTerminalProcess", () => {
 		it("clears buffer when lastRetrievedIndex exceeds fullOutput length", () => {
 			terminalProcess["fullOutput"] = "short"
 			terminalProcess["lastRetrievedIndex"] = 100
-				; (terminalProcess as any).trimRetrievedOutput()
+			;(terminalProcess as any).trimRetrievedOutput()
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)

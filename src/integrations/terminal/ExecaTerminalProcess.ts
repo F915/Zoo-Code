@@ -7,6 +7,48 @@ import { BaseTerminal } from "./BaseTerminal"
 import { BaseTerminalProcess } from "./BaseTerminalProcess"
 import { getShell, WSL_EXE_PATH } from "../../utils/shell"
 
+// Matches \\wsl$\Distro\... and \\wsl.localhost\Distro\...
+const WSL_UNC_PREFIX = /^\/\/wsl(?:\$|\.localhost)\/([^\/]+)\/?(.*)$/i
+
+async function convertWindowsPathToWsl(windowsPath: string): Promise<string | null> {
+	const forward = windowsPath.replace(/\\/g, "/")
+
+	// Already a POSIX/WSL path — no Windows-to-WSL conversion needed.
+	// This guard avoids an unnecessary wsl.exe wslpath call (≤5 s timeout)
+	// for paths that don't need conversion. In production,
+	// getCurrentWorkingDirectory() always returns Windows-style paths when
+	// isWslShell is true, so this is a defensive measure for future callers.
+	if (forward.startsWith("/") && !forward.startsWith("//")) {
+		return forward
+	}
+
+	// Tier 1: Drive-letter → /mnt/<drive>/
+	const driveMatch = forward.match(/^([A-Za-z]):\/(.*)/)
+	if (driveMatch) {
+		return `/mnt/${driveMatch[1].toLowerCase()}/${driveMatch[2]}`
+	}
+
+	// Tier 2: WSL UNC → strip prefix
+	const uncMatch = forward.match(WSL_UNC_PREFIX)
+	if (uncMatch) {
+		const subPath = uncMatch[2] || ""
+		return subPath.startsWith("/") ? subPath : `/${subPath}`
+	}
+
+	// Tier 3: Arbitrary UNC → wslpath fallback
+	try {
+		const { stdout } = await execa(WSL_EXE_PATH, ["wslpath", windowsPath], {
+			timeout: 5_000,
+			stdin: "ignore",
+		})
+		const wslPath = stdout.trim()
+		return wslPath || null
+	} catch {
+		console.warn(`[ExecaTerminalProcess] wslpath failed for "${windowsPath}"`)
+		return null
+	}
+}
+
 export class ExecaTerminalProcess extends BaseTerminalProcess {
 	private terminalRef: WeakRef<RooTerminal>
 	private aborted = false
@@ -40,26 +82,21 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 		try {
 			this.isHot = true
 
-			const resolvedShell = BaseTerminal.getExecaShellPath() || getShell()
-			const isWslShell = resolvedShell === WSL_EXE_PATH
+			const execaShellPath = BaseTerminal.getExecaShellPath()
+			const resolvedShell = execaShellPath || getShell()
 
-			let effectiveShell: string | boolean = resolvedShell
-			let effectiveCommand = command
+			// WSL detection only applies when the user has NOT set an explicit execa shell.
+			const isWslShell = execaShellPath ? false : resolvedShell === WSL_EXE_PATH
 
 			if (isWslShell) {
 				// Spawn wsl.exe directly (not through cmd.exe) to avoid nested-quoting issues.
 				// execa(file, args, options) passes args as an array — no shell interpretation.
 				const windowsCwd = this.terminal.getCurrentWorkingDirectory()
-				const forwardSlashedCwd = windowsCwd.replace(/\\/g, "/")
-				const wslCwd = forwardSlashedCwd.replace(
-					/^([A-Za-z]):\//,
-					(_, drive: string) => `/mnt/${drive.toLowerCase()}/`,
-				)
+				const wslCwd = await convertWindowsPathToWsl(windowsCwd)
 
 				const wslArgs = ["--", "bash", "-c", command]
 
-				if (wslCwd !== forwardSlashedCwd) {
-					// Drive path successfully converted — use --cd to set WSL working directory
+				if (wslCwd) {
 					wslArgs.unshift("--cd", wslCwd)
 				}
 
@@ -75,7 +112,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 				})
 			} else {
 				this.subprocess = execa({
-					shell: effectiveShell,
+					shell: resolvedShell,
 					cwd: this.terminal.getCurrentWorkingDirectory(),
 					all: true,
 					stdin: "ignore",
@@ -84,7 +121,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 						LANG: "en_US.UTF-8",
 						LC_ALL: "en_US.UTF-8",
 					},
-				})`${effectiveCommand}`
+				})`${command}`
 			}
 
 			this.pid = this.subprocess.pid
@@ -145,7 +182,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 					timeoutId = setTimeout(() => {
 						try {
 							this.subprocess?.kill("SIGKILL")
-						} catch (e) { }
+						} catch (e) {}
 
 						resolve()
 					}, 5_000)

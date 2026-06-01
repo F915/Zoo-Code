@@ -173,6 +173,56 @@ describe("TerminalProcess", () => {
 			await completePromise
 			expect(terminalProcess.isHot).toBe(false)
 		})
+
+		describe("streamAvailable timeout", () => {
+			let consoleErrorSpy: ReturnType<typeof vi.spyOn>
+
+			beforeEach(() => {
+				vi.useFakeTimers()
+				consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+			})
+
+			afterEach(() => {
+				consoleErrorSpy.mockRestore()
+				vi.useRealTimers()
+			})
+
+			it("emits completed + continue when streamAvailable times out", async () => {
+				// Terminal WITH shell integration → enters the main path, not
+				// the no_shell_integration shortcut.
+				const siTerminal = {
+					shellIntegration: { executeCommand: vi.fn() },
+					sendText: vi.fn(),
+					name: "SI Terminal",
+					processId: Promise.resolve(789),
+					creationOptions: {},
+					exitStatus: undefined,
+					state: { isInteractedWith: true },
+					dispose: vi.fn(),
+					hide: vi.fn(),
+					show: vi.fn(),
+				} as unknown as vscode.Terminal
+
+				const siTerminalInfo = new Terminal(3, siTerminal, "./")
+				const siProcess = new TestTerminalProcess(siTerminalInfo)
+
+				const completedPromise = new Promise<string | undefined>((resolve) =>
+					siProcess.once("completed", resolve),
+				)
+				const continuePromise = new Promise<void>((resolve) => siProcess.once("continue", resolve))
+
+				// Start command but do NOT emit stream_available — timeout fires
+				const runPromise = siProcess.run("timeout-command")
+
+				await vi.advanceTimersByTimeAsync(Terminal.getShellIntegrationTimeout() + 100)
+
+				await runPromise
+				const output = await completedPromise
+				await continuePromise
+
+				expect(output).toContain("shell integration stream did not start")
+			})
+		})
 	})
 
 	describe("continue", () => {
@@ -289,17 +339,15 @@ describe("TerminalProcess", () => {
 			terminalProcess.abort()
 			terminalProcess.abort()
 
-			// Two immediate Ctrl+C from the two abort() calls, but only one retry loop.
-			// This count of 2 relies on the `aborting` guard being checked AFTER the
-			// immediate sendText in abort(): the second call still fires its own Ctrl+C
-			// before the guard short-circuits the duplicate retry loop. If the guard ever
-			// moves above the send, this would drop to 1 immediate send (total 3, not 4).
-			expect(mockTerminal.sendText).toHaveBeenCalledTimes(2)
+			// Only one immediate Ctrl+C: the second abort() call hits the aborting
+			// guard (set atomically by the first call before any await), becomes a
+			// no-op, and the single retry loop handles the remaining sends.
+			expect(mockTerminal.sendText).toHaveBeenCalledTimes(1)
 
 			await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS * (MAX_ATTEMPTS + 2))
 
-			// 2 immediate + (MAX_ATTEMPTS - 1) retries from the single loop.
-			expect(mockTerminal.sendText).toHaveBeenCalledTimes(2 + (MAX_ATTEMPTS - 1))
+			// 1 immediate + (MAX_ATTEMPTS - 1) retries = MAX_ATTEMPTS total from the single loop.
+			expect(mockTerminal.sendText).toHaveBeenCalledTimes(MAX_ATTEMPTS)
 		})
 	})
 
