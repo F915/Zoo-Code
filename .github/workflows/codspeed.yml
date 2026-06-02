@@ -1,0 +1,28 @@
+name: CodSpeed
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+    # `workflow_dispatch` allows CodSpeed to trigger backtest
+    # performance analysis in order to generate initial data.
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    benchmarks:
+        name: Run benchmarks
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+            - name: Setup Node.js and pnpm
+              uses: ./.github/actions/setup-node-pnpm
+            - name: Run benchmarks
+              uses: CodSpeedHQ/action@9d332c4d90b43981c3e55ae8e38e68709996240f # v4
+              with:
+                  mode: simulation
+                  run: cd src && npx vitest bench --config vitest.bench.config.mts --run
