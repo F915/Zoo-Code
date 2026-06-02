@@ -219,6 +219,14 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			const response = await this.client.chat.completions.create(
 				params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
 			)
+			// Check for provider-specific error responses embedded in the response body
+			// (matches the base class guard in base-openai-compatible-provider.ts:238-244)
+			const responseAny = response as any
+			if (responseAny.base_resp?.status_code && responseAny.base_resp.status_code !== 0) {
+				throw new Error(
+					`Bailian API Error (${responseAny.base_resp.status_code}): ${responseAny.base_resp.status_msg || "Unknown error"}`,
+				)
+			}
 			return response.choices?.[0]?.message.content || ""
 		} catch (error) {
 			throw handleOpenAIError(error, "Bailian")
@@ -260,6 +268,12 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			const reasoningEffort = this.options.reasoningEffort
 			if (this.options.enableReasoningEffort !== false && reasoningEffort && reasoningEffort !== "disable") {
 				params.reasoning_effort = reasoningEffort === "xhigh" ? "max" : "high"
+			}
+			// When user explicitly disables thinking on an effort model,
+			// send enable_thinking: false — per DashScope API docs,
+			// DeepSeek V4 defaults to thinking ON, so omission != disable.
+			if (this.options.enableReasoningEffort === false || reasoningEffort === "disable") {
+				params.enable_thinking = false
 			}
 		}
 

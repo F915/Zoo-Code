@@ -138,7 +138,7 @@ export const ModelPicker = ({
 			)
 
 		return Object.keys(availableModels).sort(sortModels ?? ((a, b) => a.localeCompare(b)))
-	}, [models, activeProvider, organizationAllowList, selectedModelId])
+	}, [models, activeProvider, organizationAllowList, selectedModelId, sortModels])
 
 	const [searchValue, setSearchValue] = useState("")
 

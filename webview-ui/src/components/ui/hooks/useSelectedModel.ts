@@ -295,7 +295,13 @@ function getSelectedModel({
 			// Look up in routerModels (API-fetched) first, then static presets.
 			// This ensures auto-fetched models show their actual parameters
 			// instead of falling back to the default model's metadata.
-			// Follows the same pattern as the deepseek case.
+			// Similar to the deepseek case but intentionally differs:
+			// - Does not call getValidatedModelId — arbitrary custom model
+			//   IDs are allowed (validated in the API handler instead).
+			// - Checks static and router sources separately rather than
+			//   merging them into a single availableModels map.
+			// - Falls back to bailianCustomModelInfo when not found in
+			//   either source.
 			const routerInfo = routerModels.bailian?.[id]
 			const staticInfo = bailianModels[id as keyof typeof bailianModels]
 			const baseInfo = routerInfo ?? staticInfo

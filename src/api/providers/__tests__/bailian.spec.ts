@@ -540,5 +540,25 @@ describe("BailianHandler", () => {
 				: []
 			expect(texts).not.toContain("...")
 		})
+
+	it("sends enable_thinking:false when DeepSeek V4 thinking is disabled", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			enableReasoningEffort: false,
+			apiModelId: "deepseek-v4-pro",
+		})
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const generator = h.createMessage("system prompt", [])
+		await generator.next()
+
+		expect(mockCreate).toHaveBeenCalledWith(
+			expect.objectContaining({ enable_thinking: false }),
+			undefined,
+		)
+	})
 	})
 })

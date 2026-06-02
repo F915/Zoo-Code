@@ -57,29 +57,36 @@ const US_PRICES: Partial<Record<BailianModelId, BailianPrice>> = {
 }
 
 export function getBailianPrice(modelId: string, region?: BailianRegion): BailianPrice | undefined {
+	// Canonicalize versioned/named-space API IDs (e.g. "qwen3.7-max-2026-05-17",
+	// "kimi/kimi-k2.6", "ZHIPU/GLM-5.1") to preset keys for pricing lookup.
+	// Uses case-insensitive exact match → longest substring match against
+	// CN_GLOBAL_PRICES (the master table). Matches the fetcher's
+	// findMatchingPreset() logic.
+	const canonicalKey = findMatchingPricingKey(modelId, CN_GLOBAL_PRICES) ?? modelId
+
 	let base: BailianPrice | undefined
 
 	switch (region) {
 		case "beijing":
 		case "coding-plan":
 		case "token-plan":
-			base = CN_GLOBAL_PRICES[modelId as BailianModelId]
+			base = CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break
 		case "singapore":
 		case "token-plan-sgp":
-			base = INTL_PRICES[modelId as BailianModelId] ?? CN_GLOBAL_PRICES[modelId as BailianModelId]
+			base = INTL_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break
 		case "hongkong":
-			base = HK_EU_PRICES[modelId as BailianModelId] ?? CN_GLOBAL_PRICES[modelId as BailianModelId]
+			base = HK_EU_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break
 		case "frankfurt":
-			base = HK_EU_PRICES[modelId as BailianModelId] ?? CN_GLOBAL_PRICES[modelId as BailianModelId]
+			base = HK_EU_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break
 		case "virginia":
-			base = US_PRICES[modelId as BailianModelId] ?? CN_GLOBAL_PRICES[modelId as BailianModelId]
+			base = US_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break
 		default:
-			base = CN_GLOBAL_PRICES[modelId as BailianModelId]
+			base = CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 	}
 
 	if (!base) return undefined
@@ -89,6 +96,35 @@ export function getBailianPrice(modelId: string, region?: BailianRegion): Bailia
 		cacheWritesPrice: round4(base.inputPrice * CACHE_WRITES_RATIO),
 		cacheReadsPrice: round4(base.inputPrice * CACHE_READS_RATIO),
 	}
+}
+
+/**
+ * Find the best-matching pricing key for a model ID against a pricing table.
+ * Case-insensitive exact match first, then longest substring match.
+ * Returns undefined if no match is found.
+ */
+function findMatchingPricingKey(
+	modelId: string,
+	table: Record<string, BailianPrice>,
+): string | undefined {
+	const lowerId = modelId.toLowerCase()
+	const keys = Object.keys(table)
+
+	// Priority 1: exact match (case-insensitive)
+	const exact = keys.find((k) => k.toLowerCase() === lowerId)
+	if (exact) return exact
+
+	// Priority 2: longest substring match
+	let best: string | undefined
+	let bestLen = 0
+	for (const k of keys) {
+		const lk = k.toLowerCase()
+		if (lowerId.includes(lk) && lk.length > bestLen) {
+			best = k
+			bestLen = lk.length
+		}
+	}
+	return best
 }
 
 function round4(n: number): number {

@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useMemo } from "react"
 import { Checkbox } from "vscrui"
 import { VSCodeTextField, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
 
@@ -65,14 +65,26 @@ export const Bailian = ({
 
 	const modelId = (apiConfiguration.apiModelId ?? "").trim()
 	const isCustomModel = !!(modelId && !Object.hasOwn(mergedModels, modelId))
+
+	// Stable sort callback so ModelPicker's useMemo dependency doesn't
+	// invalidate on every render.
+	const sortModels = useCallback(
+		(a: string, b: string) => {
+			const aPreset = Object.hasOwn(bailianModels, a)
+			const bPreset = Object.hasOwn(bailianModels, b)
+			if (aPreset !== bPreset) return aPreset ? -1 : 1
+			return a.localeCompare(b)
+		},
+		[],
+	)
 	const defaultInfo = bailianModels[bailianDefaultModelId]
 	const customInfo = (apiConfiguration?.bailianCustomModelInfo ?? undefined) as ModelInfo | undefined
 
-	// Helper: build a clean base for custom model info
-	const makeBase = () => {
+	// Stripped base (without description), computed once for the component lifetime.
+	const baseModelInfo = useMemo(() => {
 		const { description: _, ...base } = defaultInfo as ModelInfo & { description?: string }
 		return base as ModelInfo
-	}
+	}, [defaultInfo])
 
 	return (
 		<>
@@ -145,12 +157,7 @@ export const Bailian = ({
 				errorMessage={modelValidationError}
 				simplifySettings={simplifySettings}
 				hideFreeSearchHint={true}
-				sortModels={(a, b) => {
-					const aPreset = Object.hasOwn(bailianModels, a)
-					const bPreset = Object.hasOwn(bailianModels, b)
-					if (aPreset !== bPreset) return aPreset ? -1 : 1
-					return a.localeCompare(b)
-				}}
+				sortModels={sortModels}
 				onModelChange={(newModelId) =>
 					handleModelChangeSideEffects("bailian", newModelId, setApiConfigurationField)
 				}
@@ -177,7 +184,7 @@ export const Bailian = ({
 							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseInt((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || makeBase()),
+									...(customInfo || baseModelInfo),
 									maxTokens: isNaN(value) ? undefined : value === -1 ? undefined : value,
 								}
 							})}
@@ -206,7 +213,7 @@ export const Bailian = ({
 							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseInt((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || makeBase()),
+									...(customInfo || baseModelInfo),
 									contextWindow: isNaN(value) ? defaultInfo.contextWindow : value,
 								}
 							})}
@@ -228,7 +235,7 @@ export const Bailian = ({
 								checked={customInfo?.supportsImages ?? defaultInfo.supportsImages ?? false}
 								onChange={handleInputChange("bailianCustomModelInfo", (checked) => {
 									return {
-										...(customInfo || makeBase()),
+										...(customInfo || baseModelInfo),
 										supportsImages: checked as boolean,
 									}
 								})}>
@@ -255,7 +262,7 @@ export const Bailian = ({
 								checked={customInfo?.supportsPromptCache ?? defaultInfo.supportsPromptCache ?? false}
 								onChange={handleInputChange("bailianCustomModelInfo", (checked) => {
 									return {
-										...(customInfo || makeBase()),
+										...(customInfo || baseModelInfo),
 										supportsPromptCache: checked as boolean,
 									}
 								})}>
@@ -292,10 +299,10 @@ export const Bailian = ({
 											? "var(--vscode-charts-green)"
 											: "var(--vscode-errorForeground)",
 							}}
-							onChange={handleInputChange("bailianCustomModelInfo", (e) => {
+							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseFloat((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || makeBase()),
+									...(customInfo || baseModelInfo),
 									inputPrice: isNaN(value) ? undefined : value,
 								}
 							})}
@@ -333,10 +340,10 @@ export const Bailian = ({
 											? "var(--vscode-charts-green)"
 											: "var(--vscode-errorForeground)",
 							}}
-							onChange={handleInputChange("bailianCustomModelInfo", (e) => {
+							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseFloat((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || makeBase()),
+									...(customInfo || baseModelInfo),
 									outputPrice: isNaN(value) ? undefined : value,
 								}
 							})}
@@ -372,10 +379,10 @@ export const Bailian = ({
 													? "var(--vscode-charts-green)"
 													: "var(--vscode-errorForeground)",
 									}}
-									onChange={handleInputChange("bailianCustomModelInfo", (e) => {
+									onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 										const value = parseFloat((e.target as HTMLInputElement).value)
 										return {
-											...(customInfo || makeBase()),
+											...(customInfo || baseModelInfo),
 											cacheReadsPrice: isNaN(value) ? 0 : value,
 										}
 									})}
@@ -409,10 +416,10 @@ export const Bailian = ({
 													? "var(--vscode-charts-green)"
 													: "var(--vscode-errorForeground)",
 									}}
-									onChange={handleInputChange("bailianCustomModelInfo", (e) => {
+									onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 										const value = parseFloat((e.target as HTMLInputElement).value)
 										return {
-											...(customInfo || makeBase()),
+											...(customInfo || baseModelInfo),
 											cacheWritesPrice: isNaN(value) ? 0 : value,
 										}
 									})}
@@ -439,7 +446,7 @@ export const Bailian = ({
 
 					<Button
 						variant="secondary"
-						onClick={() => setApiConfigurationField("bailianCustomModelInfo", makeBase())}>
+						onClick={() => setApiConfigurationField("bailianCustomModelInfo", baseModelInfo)}>
 						{t("settings:providers.customModel.resetDefaults")}
 					</Button>
 				</div>
