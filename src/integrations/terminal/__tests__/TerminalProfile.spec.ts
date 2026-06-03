@@ -27,7 +27,7 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 	const mockTerminal = () =>
 		({
 			exitStatus: undefined,
-			name: "Roo Code",
+			name: "Zoo Code",
 			processId: Promise.resolve(123),
 			creationOptions: {},
 			state: { isInteractedWith: true },

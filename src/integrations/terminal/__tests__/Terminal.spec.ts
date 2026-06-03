@@ -5,7 +5,6 @@ import * as vscode from "vscode"
 import { BaseTerminal } from "../BaseTerminal"
 import { Terminal } from "../Terminal"
 import { ShellIntegrationManager } from "../ShellIntegrationManager"
-import * as shellUtils from "../../../utils/shell"
 
 /** Builds a realistic vscode.Terminal stub. */
 function makeTerminal(overrides: Partial<vscode.Terminal> = {}): vscode.Terminal {
@@ -37,7 +36,6 @@ describe("Terminal", () => {
 		}
 
 		// Default mocks: no WSL, no execaShellPath, no ZDOTDIR.
-		vi.spyOn(shellUtils, "getWslProfile").mockReturnValue(null)
 		BaseTerminal.setExecaShellPath(undefined)
 		;(Terminal as any).getTerminalZdotdir = vi.fn().mockReturnValue(false)
 		vi.spyOn(Terminal, "getShellIntegrationTimeout" as any).mockReturnValue(15_000)

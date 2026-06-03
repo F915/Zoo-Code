@@ -29,6 +29,7 @@ export class TerminalProcess extends BaseTerminalProcess {
 		this.once("no_shell_integration", () => {
 			this.emit("completed", "<no shell integration>")
 			this.terminal.busy = false
+			this.terminal.activeShellExecution = undefined
 			this.terminal.setActiveStream(undefined)
 			this.continue()
 		})
