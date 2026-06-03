@@ -134,6 +134,7 @@ async function fetchModelsFromProvider(options: GetModelsOptions): Promise<Model
 			// (getModelsFromCache, writeModels, readModels,
 			// inFlightRefresh) that serve 10+ providers.
 			models = await getBailianModels(options.baseUrl, options.apiKey)
+			break
 		case "zoo-gateway":
 			models = await getZooGatewayModels({ zooSessionToken: options.apiKey, zooGatewayBaseUrl: options.baseUrl })
 			break

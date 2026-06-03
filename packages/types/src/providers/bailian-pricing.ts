@@ -27,20 +27,27 @@ const CACHE_READS_RATIO = 0.1
 // Ordered: Qwen > DeepSeek > GLM > Kimi > MiniMax; higher version > lower; max > plus > flash > other
 const CN_GLOBAL_PRICES: Record<BailianModelId, BailianPrice> = {
 	"qwen3.7-max": { inputPrice: 1.65, outputPrice: 4.951 },
+	"qwen3.7-plus": { inputPrice: 0.287, outputPrice: 1.147 },
 	"qwen3.6-plus": { inputPrice: 0.276, outputPrice: 1.651 },
 	"qwen3.6-flash": { inputPrice: 0.165, outputPrice: 0.99 },
+	"qwen3.5-plus": { inputPrice: 0.115, outputPrice: 0.688 },
+	"qwen3.5-flash": { inputPrice: 0.029, outputPrice: 0.287 },
 	"deepseek-v4-pro": { inputPrice: 1.65, outputPrice: 3.301 },
 	"deepseek-v4-flash": { inputPrice: 0.138, outputPrice: 0.275 },
 	"glm-5.1": { inputPrice: 0.825, outputPrice: 3.301 },
 	"kimi-k2.6": { inputPrice: 0.8939, outputPrice: 3.7131 },
+	"mimo-v2.5-pro": { inputPrice: 0, outputPrice: 0 },
 	"MiniMax-M2.5": { inputPrice: 0.304, outputPrice: 1.213 },
 }
 
 // International (Singapore + Token Plan Singapore)
 const INTL_PRICES: Partial<Record<BailianModelId, BailianPrice>> = {
 	"qwen3.7-max": { inputPrice: 2.5, outputPrice: 7.5 },
+	"qwen3.7-plus": { inputPrice: 0.4, outputPrice: 1.6 },
 	"qwen3.6-plus": { inputPrice: 0.5, outputPrice: 3 },
 	"qwen3.6-flash": { inputPrice: 0.25, outputPrice: 1.5 },
+	"qwen3.5-plus": { inputPrice: 0.4, outputPrice: 2.4 },
+	"qwen3.5-flash": { inputPrice: 0.1, outputPrice: 0.4 },
 	"deepseek-v4-pro": { inputPrice: 2.4, outputPrice: 4.8 },
 	"deepseek-v4-flash": { inputPrice: 0.2, outputPrice: 0.4 },
 	"glm-5.1": { inputPrice: 1.4, outputPrice: 4.4 },
@@ -103,10 +110,7 @@ export function getBailianPrice(modelId: string, region?: BailianRegion): Bailia
  * Case-insensitive exact match first, then longest substring match.
  * Returns undefined if no match is found.
  */
-function findMatchingPricingKey(
-	modelId: string,
-	table: Record<string, BailianPrice>,
-): string | undefined {
+function findMatchingPricingKey(modelId: string, table: Record<string, BailianPrice>): string | undefined {
 	const lowerId = modelId.toLowerCase()
 	const keys = Object.keys(table)
 

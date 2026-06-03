@@ -2,13 +2,7 @@ import { getBailianPrice, type BailianRegion } from "@roo-code/types"
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import {
-	type BailianModelId,
-	bailianDefaultModelId,
-	bailianModels,
-	BAILIAN_DEFAULT_TEMPERATURE,
-	type ModelInfo,
-} from "@roo-code/types"
+import { type BailianModelId, bailianDefaultModelId, bailianModels, type ModelInfo } from "@roo-code/types"
 
 import { type ApiHandlerOptions } from "../../shared/api"
 import type { ApiHandlerCreateMessageMetadata } from "../index"
@@ -62,7 +56,7 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			apiKey: options.bailianApiKey,
 			defaultProviderModelId: bailianDefaultModelId,
 			providerModels: bailianModels as Record<BailianModelId, ModelInfo>,
-			defaultTemperature: BAILIAN_DEFAULT_TEMPERATURE,
+			defaultTemperature: undefined,
 		})
 		this.bailianOptions = options
 	}
@@ -118,7 +112,7 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 				: undefined
 
 		const baseInfo =
-			staticInfo ?? cachedInfo ?? matchedPresetInfo ?? this.providerModels[this.defaultProviderModelId]
+			staticInfo ?? cachedInfo ?? matchedPresetInfo ?? ({ contextWindow: 200_000, supportsImages: false, supportsPromptCache: false } as ModelInfo)
 
 		const info: ModelInfo = { ...baseInfo, ...price, ...(custom || {}) }
 
@@ -128,7 +122,7 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			modelId: id,
 			model: info,
 			settings: this.options,
-			defaultTemperature: BAILIAN_DEFAULT_TEMPERATURE,
+			defaultTemperature: undefined,
 		})
 
 		return { id, info, ...params }
@@ -177,8 +171,8 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			params.max_tokens = maxTokens
 		}
 
-		// Temperature: respect supportsTemperature flag
-		if (modelInfo.supportsTemperature !== false) {
+		// Temperature: respect supportsTemperature flag, omit when undefined
+		if (modelInfo.supportsTemperature !== false && temperature !== undefined) {
 			params.temperature = temperature
 		}
 

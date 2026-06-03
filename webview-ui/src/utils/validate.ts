@@ -253,7 +253,16 @@ function validateDynamicProviderModelId(
 
 	const models = routerModels?.[provider]
 
-	if (models && Object.keys(models).length > 1 && !Object.keys(models).includes(modelId)) {
+	// Providers that support custom model configuration (user can type any model ID)
+	// should not gate on the auto-fetched model list.
+	const customModelProviders = new Set(["bailian", "openai-native"])
+
+	if (
+		models &&
+		Object.keys(models).length > 1 &&
+		!Object.keys(models).includes(modelId) &&
+		!customModelProviders.has(provider)
+	) {
 		return i18next.t("settings:validation.modelAvailability", { modelId })
 	}
 

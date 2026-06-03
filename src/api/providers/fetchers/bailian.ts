@@ -24,19 +24,6 @@ const NON_TEXT_MODEL_KEYWORDS = [
 ]
 
 /**
- * Conservative defaults for models not matching any preset.
- * Pricing intentionally undefined — unknown pricing is better than wrong pricing.
- * supportsTemperature omitted — defaults to true (temperature is sent).
- * defaultTemperature omitted — inherits BAILIAN_DEFAULT_TEMPERATURE (0.7).
- */
-const UNKNOWN_MODEL_DEFAULTS = {
-	maxTokens: 8192,
-	contextWindow: 128_000,
-	supportsImages: false,
-	supportsPromptCache: false,
-} as const
-
-/**
  * Check whether a model ID belongs to a non-text model that should be
  * excluded from the chat-capable model list.
  *
@@ -184,10 +171,14 @@ export async function getBailianModels(baseUrl?: string, apiKey?: string): Promi
 				// Known model (exact or substring match) — use preset spec
 				models[modelId] = { ...bailianModels[matchedPresetKey as keyof typeof bailianModels] }
 			} else {
-				// Unknown model — conservative defaults, no pricing
+				// Unknown model — minimal metadata so it appears in the UI
+				// picker but makes no capability assumptions. The handler's
+				// getModel() will use a matching minimal fallback, and users
+				// can enable capabilities via custom model config in the UI.
 				models[modelId] = {
-					...UNKNOWN_MODEL_DEFAULTS,
-					description: `Bailian model: ${modelId}`,
+					contextWindow: 200_000,
+					supportsImages: false,
+					supportsPromptCache: false,
 				}
 			}
 		}

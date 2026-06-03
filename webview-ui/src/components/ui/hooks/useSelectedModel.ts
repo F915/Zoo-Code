@@ -305,16 +305,19 @@ function getSelectedModel({
 			const routerInfo = routerModels.bailian?.[id]
 			const staticInfo = bailianModels[id as keyof typeof bailianModels]
 			const baseInfo = routerInfo ?? staticInfo
-			// Custom models (typed by user, not in any source): merge
-			// default model info with bailianCustomModelInfo, matching
-			// the API handler's getModel() fallback.
-			// Note: supportsReasoningBinary is inherited from the default
-			// model (qwen3.6-plus). Custom models that do not support
-			// enable_thinking should disable reasoning via the UI checkbox.
-			const effectiveInfo = baseInfo ?? {
-				...bailianModels[defaultModelId as keyof typeof bailianModels],
-				...(apiConfiguration.bailianCustomModelInfo || {}),
-			}
+			// When bailianCustomModelInfo is set, always layer it on top of
+			// the best-known source (router cache → static preset → default
+			// model). This ensures auto-fetched unmatched models (which have
+			// minimal cache metadata) and fully custom models both reflect
+			// user-configured parameters in the displayed model info.
+			const customInfo = (apiConfiguration.bailianCustomModelInfo ?? undefined) as
+				| ModelInfo
+				| undefined
+			const effectiveInfo = customInfo
+				? { ...(baseInfo ?? bailianModels[defaultModelId as keyof typeof bailianModels]), ...customInfo }
+				: baseInfo ?? {
+						...bailianModels[defaultModelId as keyof typeof bailianModels],
+					}
 			const info = resolveModelInfo(effectiveInfo, provider, id, apiConfiguration)
 			return { id, info }
 		}

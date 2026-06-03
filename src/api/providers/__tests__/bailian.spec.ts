@@ -41,11 +41,13 @@ describe("BailianHandler", () => {
 		expect(handler.getModel().id).toBe(bailianDefaultModelId)
 	})
 
-	it("uses default model info for unknown model ID", () => {
+	it("uses minimal fallback for unknown model ID", () => {
 		const h = new BailianHandler({ bailianApiKey: "test-key", apiModelId: "unknown" })
 		const result = h.getModel()
 		expect(result.id).toBe("unknown")
-		expect(result.info).toMatchObject(bailianModels[bailianDefaultModelId])
+		expect(result.info.contextWindow).toBe(200_000)
+		expect(result.info.supportsPromptCache).toBe(false)
+		expect(result.info.maxTokens).toBeUndefined()
 	})
 
 	it("returns known model with exact info", () => {
@@ -330,7 +332,7 @@ describe("BailianHandler", () => {
 
 	// --- supportsTemperature ---
 
-	it("should include temperature when supportsTemperature is true (normal path)", async () => {
+	it("should omit temperature when no default and user has not set one", async () => {
 		const h = new BailianHandler({ bailianApiKey: "test-key", apiModelId: "qwen3.6-plus" })
 
 		mockCreate.mockImplementationOnce(() => ({
@@ -340,7 +342,20 @@ describe("BailianHandler", () => {
 		const generator = h.createMessage("sys", [])
 		await generator.next()
 
-		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ temperature: expect.any(Number) }), undefined)
+		expect(mockCreate).toHaveBeenCalledWith(expect.not.objectContaining({ temperature: expect.any(Number) }), undefined)
+	})
+
+	it("should include temperature when user sets modelTemperature", async () => {
+		const h = new BailianHandler({ bailianApiKey: "test-key", apiModelId: "qwen3.6-plus", modelTemperature: 0.3 })
+
+		mockCreate.mockImplementationOnce(() => ({
+			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+		}))
+
+		const generator = h.createMessage("sys", [])
+		await generator.next()
+
+		expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ temperature: 0.3 }), undefined)
 	})
 
 	// --- includeMaxTokens ---

@@ -385,7 +385,6 @@ const ApiOptions = ({
 				lmstudio: { field: "lmStudioModelId" },
 			}
 
-			const config = PROVIDER_MODEL_CONFIG[value]
 			const config = getProviderModelConfig(value, apiConfiguration)
 			if (config) {
 				validateAndResetModel(

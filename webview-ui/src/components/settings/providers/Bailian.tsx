@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react"
+import { useCallback } from "react"
 import { Checkbox } from "vscrui"
 import { VSCodeTextField, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
 
@@ -64,7 +64,7 @@ export const Bailian = ({
 	} as Record<string, ModelInfo>
 
 	const modelId = (apiConfiguration.apiModelId ?? "").trim()
-	const isCustomModel = !!(modelId && !Object.hasOwn(mergedModels, modelId))
+	const isCustomModel = !!(modelId && !Object.hasOwn(bailianModels, modelId))
 
 	// Stable sort callback so ModelPicker's useMemo dependency doesn't
 	// invalidate on every render.
@@ -77,14 +77,8 @@ export const Bailian = ({
 		},
 		[],
 	)
-	const defaultInfo = bailianModels[bailianDefaultModelId]
+	const defaultInfo = bailianModels[bailianDefaultModelId] as ModelInfo
 	const customInfo = (apiConfiguration?.bailianCustomModelInfo ?? undefined) as ModelInfo | undefined
-
-	// Stripped base (without description), computed once for the component lifetime.
-	const baseModelInfo = useMemo(() => {
-		const { description: _, ...base } = defaultInfo as ModelInfo & { description?: string }
-		return base as ModelInfo
-	}, [defaultInfo])
 
 	return (
 		<>
@@ -158,9 +152,15 @@ export const Bailian = ({
 				simplifySettings={simplifySettings}
 				hideFreeSearchHint={true}
 				sortModels={sortModels}
-				onModelChange={(newModelId) =>
+				onModelChange={(newModelId) => {
 					handleModelChangeSideEffects("bailian", newModelId, setApiConfigurationField)
-				}
+					// Clear custom model overrides when switching to a preset
+					// model so stale bailianCustomModelInfo doesn't leak into
+					// the UI display or API requests.
+					if (Object.hasOwn(bailianModels, newModelId)) {
+						setApiConfigurationField("bailianCustomModelInfo", null)
+					}
+				}}
 			/>
 
 			{/* === Custom Model Configuration (below ModelPicker, per OpenAICompatible pattern) === */}
@@ -173,19 +173,19 @@ export const Bailian = ({
 					{/* maxTokens */}
 					<div>
 						<VSCodeTextField
-							value={customInfo?.maxTokens?.toString() ?? defaultInfo.maxTokens?.toString() ?? ""}
+							value={customInfo?.maxTokens != null ? String(customInfo.maxTokens) : (defaultInfo.maxTokens?.toString() ?? "")}
 							type="text"
 							style={{
 								borderColor:
-									customInfo?.maxTokens != null && customInfo.maxTokens > 0
+									customInfo?.maxTokens != null
 										? "var(--vscode-charts-green)"
 										: "var(--vscode-input-border)",
 							}}
-							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
+							onBlur={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseInt((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || baseModelInfo),
-									maxTokens: isNaN(value) ? undefined : value === -1 ? undefined : value,
+									...(customInfo ?? ({} as ModelInfo)),
+									maxTokens: isNaN(value) ? undefined : value,
 								}
 							})}
 							placeholder={t("settings:placeholders.numbers.maxTokens")}
@@ -210,10 +210,10 @@ export const Bailian = ({
 										? "var(--vscode-charts-green)"
 										: "var(--vscode-input-border)",
 							}}
-							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
+							onBlur={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseInt((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || baseModelInfo),
+									...(customInfo ?? ({} as ModelInfo)),
 									contextWindow: isNaN(value) ? defaultInfo.contextWindow : value,
 								}
 							})}
@@ -235,7 +235,7 @@ export const Bailian = ({
 								checked={customInfo?.supportsImages ?? defaultInfo.supportsImages ?? false}
 								onChange={handleInputChange("bailianCustomModelInfo", (checked) => {
 									return {
-										...(customInfo || baseModelInfo),
+										...(customInfo ?? ({} as ModelInfo)),
 										supportsImages: checked as boolean,
 									}
 								})}>
@@ -262,7 +262,7 @@ export const Bailian = ({
 								checked={customInfo?.supportsPromptCache ?? defaultInfo.supportsPromptCache ?? false}
 								onChange={handleInputChange("bailianCustomModelInfo", (checked) => {
 									return {
-										...(customInfo || baseModelInfo),
+										...(customInfo ?? ({} as ModelInfo)),
 										supportsPromptCache: checked as boolean,
 									}
 								})}>
@@ -302,7 +302,7 @@ export const Bailian = ({
 							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseFloat((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || baseModelInfo),
+									...(customInfo ?? ({} as ModelInfo)),
 									inputPrice: isNaN(value) ? undefined : value,
 								}
 							})}
@@ -343,7 +343,7 @@ export const Bailian = ({
 							onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 								const value = parseFloat((e.target as HTMLInputElement).value)
 								return {
-									...(customInfo || baseModelInfo),
+									...(customInfo ?? ({} as ModelInfo)),
 									outputPrice: isNaN(value) ? undefined : value,
 								}
 							})}
@@ -382,7 +382,7 @@ export const Bailian = ({
 									onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 										const value = parseFloat((e.target as HTMLInputElement).value)
 										return {
-											...(customInfo || baseModelInfo),
+											...(customInfo ?? ({} as ModelInfo)),
 											cacheReadsPrice: isNaN(value) ? 0 : value,
 										}
 									})}
@@ -419,7 +419,7 @@ export const Bailian = ({
 									onInput={handleInputChange("bailianCustomModelInfo", (e) => {
 										const value = parseFloat((e.target as HTMLInputElement).value)
 										return {
-											...(customInfo || baseModelInfo),
+											...(customInfo ?? ({} as ModelInfo)),
 											cacheWritesPrice: isNaN(value) ? 0 : value,
 										}
 									})}
@@ -446,7 +446,7 @@ export const Bailian = ({
 
 					<Button
 						variant="secondary"
-						onClick={() => setApiConfigurationField("bailianCustomModelInfo", baseModelInfo)}>
+						onClick={() => setApiConfigurationField("bailianCustomModelInfo", null)}>
 						{t("settings:providers.customModel.resetDefaults")}
 					</Button>
 				</div>

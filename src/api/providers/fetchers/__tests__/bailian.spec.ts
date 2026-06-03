@@ -85,19 +85,14 @@ describe("getBailianModels", () => {
 		expect(models["ZHIPU/GLM-5.1"].supportsPromptCache).toBe(true)
 	})
 
-	it("uses conservative defaults for unknown model", async () => {
+	it("uses minimal metadata for unmatched models", async () => {
 		mockResponse(200, { data: [{ id: "some-future-model" }] })
 
 		const models = await getBailianModels(BASE_URL, API_KEY)
 		expect(models["some-future-model"]).toBeDefined()
-		const info = models["some-future-model"]
-		expect(info.maxTokens).toBe(8192)
-		expect(info.contextWindow).toBe(128_000)
-		expect(info.supportsImages).toBe(false)
-		expect(info.supportsPromptCache).toBe(false)
-		// Pricing intentionally undefined
-		expect(info.inputPrice).toBeUndefined()
-		expect(info.outputPrice).toBeUndefined()
+		expect(models["some-future-model"].contextWindow).toBe(200_000)
+		expect(models["some-future-model"].supportsPromptCache).toBe(false)
+		expect(models["some-future-model"].supportsImages).toBe(false)
 	})
 
 	it("filters out image models", async () => {
@@ -203,11 +198,13 @@ describe("getBailianModels", () => {
 		expect(models["qwen3.7-max-2026-05-20"].maxTokens).toBe(65536)
 		// ZHIPU/GLM-5.1 has "glm-5.1" as substring (case-insensitive)
 		expect(models["ZHIPU/GLM-5.1"].contextWindow).toBe(202752)
-		// Unknown model
-		expect(models["unknown-experimental"].maxTokens).toBe(8192)
+		// Unknown model — included with minimal metadata
+		expect(models["unknown-experimental"]).toBeDefined()
+		expect(models["unknown-experimental"].contextWindow).toBe(200_000)
+		expect(models["unknown-experimental"].supportsPromptCache).toBe(false)
 		// Image model excluded
 		expect(models["qwen-image-2.0-pro"]).toBeUndefined()
-		// Total: 4 text models
+		// Total: 4 text models (unknown included with minimal metadata)
 		expect(Object.keys(models)).toHaveLength(4)
 	})
 
@@ -239,12 +236,12 @@ describe("getBailianModels", () => {
 
 	it("skips models with non-string or empty id", async () => {
 		mockResponse(200, {
-			data: [{ id: null }, { id: 123 }, { id: "" }, { id: "ok-model" }],
+			data: [{ id: null }, { id: 123 }, { id: "" }, { id: "qwen3.6-plus" }],
 		})
 
 		const models = await getBailianModels(BASE_URL, API_KEY)
 		expect(Object.keys(models)).toHaveLength(1)
-		expect(models["ok-model"]).toBeDefined()
+		expect(models["qwen3.6-plus"]).toBeDefined()
 	})
 
 	it("includes truncated error body in thrown Error message", async () => {
