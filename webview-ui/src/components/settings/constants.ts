@@ -66,6 +66,7 @@ export const PROVIDERS = [
 	{ value: "fireworks", label: "Fireworks AI", proxy: false },
 	{ value: "vercel-ai-gateway", label: "Vercel AI Gateway", proxy: false },
 	{ value: "opencode-go", label: "Opencode Go", proxy: false },
+	{ value: "zoo-gateway", label: "Zoo Gateway", proxy: false },
 	{ value: "minimax", label: "MiniMax", proxy: false },
 	{ value: "mimo", label: "Xiaomi MiMo", proxy: false },
 	{ value: "bailian", label: "Bailian (Alibaba Cloud)", proxy: false },
