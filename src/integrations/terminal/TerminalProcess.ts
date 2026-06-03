@@ -57,10 +57,14 @@ export class TerminalProcess extends BaseTerminalProcess {
 					"(would execute without output capture). Falling back to inline (execa) execution.",
 			)
 
-			this.emit(
-				"no_shell_integration",
-				"Shell integration is inactive; falling back to inline (execa) execution.",
-			)
+			// Emit no_shell_integration with commandSubmitted: false — we did NOT
+			// call sendText, so there is no command running in the external terminal.
+			// The constructor's no_shell_integration handler will emit "completed"
+			// and "continue", so do NOT emit those here (double execution).
+			this.emit("no_shell_integration", {
+				message: "Shell integration is inactive; falling back to inline (execa) execution.",
+				commandSubmitted: false,
+			})
 
 			return
 		}
@@ -71,10 +75,13 @@ export class TerminalProcess extends BaseTerminalProcess {
 				// Remove event listener to prevent memory leaks
 				this.removeAllListeners("stream_available")
 
-				// NOTE: Do NOT emit "no_shell_integration" here — the command was
-				// already submitted via executeCommand() and will run (or is running)
-				// in the external terminal. Emitting "no_shell_integration" would
-				// cause ExecuteCommandTool to re-execute via execa (double execution).
+				// Emit no_shell_integration event with descriptive message.
+				// commandSubmitted: true because the command WAS submitted via
+				// executeCommand() — it's running (or ran) in the external terminal.
+				this.emit("no_shell_integration", {
+					message: `VSCE shell integration stream did not start within ${Terminal.getShellIntegrationTimeout() / 1000} seconds. Terminal problem?`,
+					commandSubmitted: true,
+				})
 
 				// Reject with descriptive error
 				reject(
@@ -96,19 +103,19 @@ export class TerminalProcess extends BaseTerminalProcess {
 			this.once("shell_execution_complete", (details: ExitCodeDetails) => resolve(details))
 		})
 
-		// Execute command
-		const defaultWindowsShellProfile = vscode.workspace
-			.getConfiguration("terminal.integrated.defaultProfile")
-			.get("windows")
+		// Execute command.
+		// Determine whether the active shell is PowerShell so we can apply the
+		// PS-specific counter/sleep workarounds.  Prefer the Zoo Code profile
+		// override (if set) over the VS Code default profile.  Fix for the wrong
+		// config API: must be getConfiguration("terminal.integrated").get(
+		// "defaultProfile.windows"), not the reversed form that always returns null.
+		const shellKind = {
+			isPowerShell: Terminal.isActiveShellPowerShell(),
+			isFish: Terminal.isActiveShellFish(),
+		}
+		let commandToExecute = command
 
-		const isPowerShell =
-			process.platform === "win32" &&
-			(defaultWindowsShellProfile === null ||
-				(defaultWindowsShellProfile as string)?.toLowerCase().includes("powershell"))
-
-		if (isPowerShell) {
-			let commandToExecute = command
-
+		if (shellKind.isPowerShell) {
 			// Only add the PowerShell counter workaround if enabled
 			if (Terminal.getPowershellCounter()) {
 				commandToExecute += ` ; "(Zoo/PS Workaround: ${this.terminal.cmdCounter++})" > $null`
@@ -118,10 +125,22 @@ export class TerminalProcess extends BaseTerminalProcess {
 			if (Terminal.getCommandDelay() > 0) {
 				commandToExecute += ` ; start-sleep -milliseconds ${Terminal.getCommandDelay()}`
 			}
+		}
 
-			terminal.shellIntegration.executeCommand(commandToExecute)
-		} else {
-			terminal.shellIntegration.executeCommand(command)
+		try {
+			const execution = terminal.shellIntegration.executeCommand(
+				this.prepareCommandForShellIntegration(commandToExecute, shellKind),
+			)
+
+			this.terminal.activeShellExecution = execution
+
+			// VS Code only captures data written after read() is first called, so read
+			// the execution stream immediately instead of waiting for the global start
+			// event to deliver the same execution later.
+			this.terminal.setActiveStream(execution.read())
+		} catch (error) {
+			this.terminal.activeShellExecution = undefined
+			throw error
 		}
 
 		this.isHot = true
@@ -148,9 +167,6 @@ export class TerminalProcess extends BaseTerminalProcess {
 			return
 		}
 
-		let preOutput = ""
-		let commandOutputStarted = false
-
 		/*
 		 * Extract clean output from raw accumulated output. FYI:
 		 * ]633 is a custom sequence number used by VSCode shell integration:
@@ -163,22 +179,14 @@ export class TerminalProcess extends BaseTerminalProcess {
 
 		// Process stream data
 		for await (let data of stream) {
-			// Check for command output start marker
-			if (!commandOutputStarted) {
-				preOutput += data
-				const match = this.matchAfterVsceStartMarkers(data)
+			const match = this.fullOutput === "" ? this.matchAfterVsceStartMarkers(data) : undefined
 
-				if (match !== undefined) {
-					commandOutputStarted = true
-					data = match
-					this.fullOutput = "" // Reset fullOutput when command actually starts
-					this.emit("line", "") // Trigger UI to proceed
-				} else {
-					continue
-				}
+			if (match !== undefined) {
+				data = match
+				this.emit("line", "") // Trigger UI to proceed
 			}
 
-			// Command output started, accumulate data without filtering.
+			// Accumulate data without filtering.
 			// notice to future programmers: do not add escape sequence
 			// filtering here: fullOutput cannot change in length (see getUnretrievedOutput),
 			// and chunks may not be complete so you cannot rely on detecting or removing escape sequences mid-stream.
@@ -202,24 +210,12 @@ export class TerminalProcess extends BaseTerminalProcess {
 
 		// Wait for shell execution to complete.
 		await shellExecutionComplete
+		this.terminal.activeShellExecution = undefined
 
 		this.isHot = false
 
-		if (commandOutputStarted) {
-			// Emit any remaining output before completing
-			this.emitRemainingBufferIfListening()
-		} else {
-			// The command executed via executeCommand() (shell integration IS available),
-			// but the stream didn't contain the expected ]633;C / ]133;C start marker.
-			// This happens on WSL where the PTY bridge can reorder or omit markers.
-			// Since the command already ran in the external terminal, falling back to
-			// execa would cause double execution. Instead, treat all stream data as
-			// command output and complete normally.
-			// Use the preOutput as the command output — it contains the actual
-			// command result even if the markers were stripped by the WSL PTY bridge.
-			this.fullOutput = preOutput
-			this.emitRemainingBufferIfListening()
-		}
+		// Emit any remaining output before completing.
+		this.emitRemainingBufferIfListening()
 
 		// fullOutput begins after C marker so we only need to trim off D marker
 		// (if D exists, see VSCode bug# 237208):
@@ -236,6 +232,31 @@ export class TerminalProcess extends BaseTerminalProcess {
 		this.stopHotTimer()
 		this.emit("completed", this.stripCursorSequences(this.removeVSCodeShellIntegration(this.fullOutput)))
 		this.emit("continue")
+	}
+
+	/**
+	 * VS Code reports each complete top-level statement in multiline input as a
+	 * separate shell execution. Keep the submitted script in one execution so a
+	 * leading assignment cannot complete and detach the tracked process before
+	 * the remaining statements run.
+	 */
+	private prepareCommandForShellIntegration(
+		command: string,
+		shellKind: { isPowerShell: boolean; isFish: boolean },
+	): string {
+		if (!command.includes("\n")) {
+			return command
+		}
+
+		if (shellKind.isPowerShell) {
+			return `. {\n${command}\n}`
+		}
+
+		if (shellKind.isFish) {
+			return `begin\n${command}\nend`
+		}
+
+		return `{\n${command}\n}`
 	}
 
 	public override continue() {

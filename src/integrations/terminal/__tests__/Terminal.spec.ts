@@ -56,8 +56,8 @@ describe("Terminal", () => {
 	// =====================================================================
 
 	describe("constructor — terminal creation", () => {
-		it("passes no shellPath when WSL profile is detected", () => {
-			vi.mocked(shellUtils.getWslProfile).mockReturnValue({ path: "C:\\Windows\\System32\\wsl.exe", args: [] })
+		it("passes no shellPath when no profile override is set", () => {
+			vi.spyOn(Terminal, "getProfileShell").mockReturnValue(undefined)
 			const spy = vi.spyOn(vscode.window, "createTerminal" as any)
 
 			new Terminal(1, undefined, "/home/user/project")
@@ -66,21 +66,18 @@ describe("Terminal", () => {
 			expect((spy.mock.calls[0][0] as any).shellPath).toBeUndefined()
 		})
 
-		it("passes explicit shellPath when execaShellPath is set (no WSL)", () => {
-			BaseTerminal.setExecaShellPath("/usr/bin/zsh")
+		it("passes shellPath and shellArgs when a profile override supplies them", () => {
+			vi.spyOn(Terminal, "getProfileShell").mockReturnValue({
+				shellPath: "/usr/bin/git-bash",
+				shellArgs: ["--login"],
+			})
+			vi.spyOn(Terminal, "getTerminalProfile").mockReturnValue("Git Bash")
 			const spy = vi.spyOn(vscode.window, "createTerminal" as any)
 
 			new Terminal(2, undefined, "/test/cwd")
 
-			expect((spy.mock.calls[0][0] as any).shellPath).toBe("/usr/bin/zsh")
-		})
-
-		it("passes no shellPath when neither WSL nor execaShellPath is set", () => {
-			const spy = vi.spyOn(vscode.window, "createTerminal" as any)
-
-			new Terminal(3, undefined, "/default/cwd")
-
-			expect((spy.mock.calls[0][0] as any).shellPath).toBeUndefined()
+			expect((spy.mock.calls[0][0] as any).shellPath).toBe("/usr/bin/git-bash")
+			expect((spy.mock.calls[0][0] as any).shellArgs).toEqual(["--login"])
 		})
 
 		it("reuses the provided terminal without calling createTerminal", () => {
