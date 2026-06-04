@@ -1061,6 +1061,7 @@ export const webviewMessageHandler = async (
 				} catch (e) {
 					// Region requires workspaceId but none configured -- skip model fetching
 					console.warn(`[requestRouterModels] Bailian: ${e instanceof Error ? e.message : String(e)}`)
+					TelemetryService.instance.captureException(e instanceof Error ? e : new Error(String(e)))
 					bailianBaseUrl = ""
 				}
 
