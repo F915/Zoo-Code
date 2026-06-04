@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { getBailianPrice } from "../bailian-pricing.js"
+import { BAILIAN_REGIONS, getBailianPrice } from "../bailian-pricing.js"
 
 describe("getBailianPrice", () => {
 	it("returns beijing pricing for exact model ID", () => {
@@ -37,4 +37,17 @@ describe("getBailianPrice", () => {
 		expect(p!.cacheWritesPrice).toBe(0.345)
 		expect(p!.cacheReadsPrice).toBe(0.0276)
 	})
+
+	it("BAILIAN_REGIONS contains all 8 expected region values", () => {
+		expect(BAILIAN_REGIONS).toHaveLength(8)
+		expect(BAILIAN_REGIONS).toContain("beijing")
+		expect(BAILIAN_REGIONS).toContain("singapore")
+		expect(BAILIAN_REGIONS).toContain("virginia")
+		expect(BAILIAN_REGIONS).toContain("frankfurt")
+		expect(BAILIAN_REGIONS).toContain("hongkong")
+		expect(BAILIAN_REGIONS).toContain("coding-plan")
+		expect(BAILIAN_REGIONS).toContain("token-plan")
+		expect(BAILIAN_REGIONS).toContain("token-plan-sgp")
+	})
+
 })

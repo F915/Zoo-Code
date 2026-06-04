@@ -1,6 +1,6 @@
 import * as assert from "assert"
 
-import { RooCodeEventName, type ClineMessage } from "@roo-code/types"
+import { RooCodeEventName, type ClineMessage, type RooCodeAPI, type RooCodeSettings } from "@roo-code/types"
 
 import { setDefaultSuiteTimeout } from "../test-utils"
 import { waitUntilCompleted } from "../utils"
@@ -10,8 +10,6 @@ const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY
 // ---------------------------------------------------------------------------
 // Fetch interceptor
 // ---------------------------------------------------------------------------
-
-/** @typedef {{ model?: string; enable_thinking?: boolean; thinking_budget?: number; reasoning_effort?: string; probeTag?: string }} BailianRequestCapture */
 
 type BailianRequestCapture = {
 	url?: string
@@ -33,7 +31,13 @@ function installBailianFetchInterceptor(capture: BailianRequestCapture[], passth
 	globalThis.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
 		const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
 
-		const isBailianUrl = url.includes("dashscope.aliyuncs.com") || url.includes("maas.aliyuncs.com")
+		let isBailianUrl = false
+		try {
+			const hostname = new URL(url).hostname
+			isBailianUrl = hostname === "dashscope.aliyuncs.com" || hostname.endsWith(".maas.aliyuncs.com")
+		} catch {
+			// leave isBailianUrl = false
+		}
 
 		if (isBailianUrl && url.includes("/chat/completions")) {
 			const body = init?.body ? JSON.parse(init.body as string) : {}
@@ -114,21 +118,19 @@ function installBailianFetchInterceptor(capture: BailianRequestCapture[], passth
 // Suite
 // ---------------------------------------------------------------------------
 
-describe("Bailian Provider", function () {
+suite("Bailian Provider", function () {
 	setDefaultSuiteTimeout(this)
 
-	/** @type {import("../../../src/extension/api").API} */
-	let api: any
+	let api: RooCodeAPI
 
-	/** @type {import("../../../src/extension/api").ProviderSettings} */
-	let originalConfig: any
+	let originalConfig: RooCodeSettings
 
-	before(async function () {
+	suiteSetup(async function () {
 		api = globalThis.api
 		if (!api) {
 			throw new Error("E2E API not found — ensure the test runner initializes globalThis.api")
 		}
-		originalConfig = await api.getConfiguration()
+		originalConfig = api.getConfiguration()
 	})
 
 	suiteTeardown(async function () {
@@ -141,7 +143,7 @@ describe("Bailian Provider", function () {
 	// Beijing region — basic streaming smoke test
 	// -----------------------------------------------------------------------
 
-	it("completes a task on Beijing region with Qwen model", async function () {
+	test("completes a task on Beijing region with Qwen model", async function () {
 		const requests: BailianRequestCapture[] = []
 		const restore = installBailianFetchInterceptor(requests)
 
@@ -184,7 +186,7 @@ describe("Bailian Provider", function () {
 	// DeepSeek V4 reasoning_effort parameter
 	// -----------------------------------------------------------------------
 
-	it("sends reasoning_effort for DeepSeek V4 model", async function () {
+	test("sends reasoning_effort for DeepSeek V4 model", async function () {
 		const requests: BailianRequestCapture[] = []
 		const restore = installBailianFetchInterceptor(requests)
 
@@ -223,7 +225,7 @@ describe("Bailian Provider", function () {
 	// Binary reasoning enable_thinking parameter (Qwen)
 	// -----------------------------------------------------------------------
 
-	it("sends enable_thinking for binary reasoning model (Qwen)", async function () {
+	test("sends enable_thinking for binary reasoning model (Qwen)", async function () {
 		const requests: BailianRequestCapture[] = []
 		const restore = installBailianFetchInterceptor(requests)
 
@@ -262,7 +264,7 @@ describe("Bailian Provider", function () {
 	// Workspace ID for Frankfurt region
 	// -----------------------------------------------------------------------
 
-	it("uses Frankfurt workspaceId-based URL", async function () {
+	test("uses Frankfurt workspaceId-based URL", async function () {
 		const requests: BailianRequestCapture[] = []
 		const restore = installBailianFetchInterceptor(requests)
 

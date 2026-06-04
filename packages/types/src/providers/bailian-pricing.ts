@@ -1,14 +1,17 @@
 import type { BailianModelId } from "./bailian.js"
 
-export type BailianRegion =
-	| "beijing"
-	| "singapore"
-	| "virginia"
-	| "frankfurt"
-	| "hongkong"
-	| "coding-plan"
-	| "token-plan"
-	| "token-plan-sgp"
+export const BAILIAN_REGIONS = [
+	"beijing",
+	"singapore",
+	"virginia",
+	"frankfurt",
+	"hongkong",
+	"coding-plan",
+	"token-plan",
+	"token-plan-sgp",
+] as const
+
+export type BailianRegion = (typeof BAILIAN_REGIONS)[number]
 
 export interface BailianPrice {
 	inputPrice: number
@@ -24,6 +27,8 @@ export interface BailianPrice {
 const CACHE_WRITES_RATIO = 1.25
 const CACHE_READS_RATIO = 0.1
 
+// Single source of truth for all Bailian pricing.
+// bailian.ts model definitions MUST NOT duplicate pricing — use getBailianPrice().
 // Ordered: Qwen > DeepSeek > GLM > Kimi > MiniMax; higher version > lower; max > plus > flash > other
 const CN_GLOBAL_PRICES: Record<BailianModelId, BailianPrice> = {
 	"qwen3.7-max": { inputPrice: 1.65, outputPrice: 4.951 },
