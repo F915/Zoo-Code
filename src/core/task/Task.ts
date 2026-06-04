@@ -1433,7 +1433,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	public updateApiConfiguration(newApiConfiguration: ProviderSettings): void {
 		// Update the configuration and rebuild the API handler
 		this.apiConfiguration = newApiConfiguration
-		this.api = buildApiHandler(this.apiConfiguration)
+		try {
+			this.api = buildApiHandler(this.apiConfiguration)
+		} catch (error) {
+			console.error(`Failed to rebuild API handler: ${error instanceof Error ? error.message : String(error)}`)
+			throw error
+		}
 	}
 
 	public async submitUserMessage(
