@@ -34,6 +34,9 @@ function installBailianFetchInterceptor(capture: BailianRequestCapture[], passth
 		let isBailianUrl = false
 		try {
 			const hostname = new URL(url).hostname
+			// Safe: new URL(url).hostname extracts only the hostname
+			// component, so === and .endsWith below are not substring
+			// checks against the full URL.
 			isBailianUrl = hostname === "dashscope.aliyuncs.com" || hostname.endsWith(".maas.aliyuncs.com")
 		} catch {
 			// leave isBailianUrl = false
@@ -296,7 +299,13 @@ suite("Bailian Provider", function () {
 				messages.some((m) => m.type === "say" && m.say === "completion_result"),
 				"Task should complete with Frankfurt endpoint",
 			)
-			const frankfurtRequest = requests.find((r) => r.url?.includes("ws-test-123.eu-central-1.maas.aliyuncs.com"))
+			const frankfurtRequest = requests.find((r) => {
+				try {
+					return new URL(r.url!).hostname === "ws-test-123.eu-central-1.maas.aliyuncs.com"
+				} catch {
+					return false
+				}
+			})
 			assert.ok(frankfurtRequest, "Should use workspaceId-prefixed URL for Frankfurt region")
 		} finally {
 			api.off(RooCodeEventName.Message, messageHandler)
