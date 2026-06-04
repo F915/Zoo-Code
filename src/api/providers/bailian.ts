@@ -221,7 +221,11 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 					`Bailian API Error (${responseAny.base_resp.status_code}): ${responseAny.base_resp.status_msg || "Unknown error"}`,
 				)
 			}
-			return response.choices?.[0]?.message.content || ""
+			const content = response.choices?.[0]?.message.content
+			if (content === null || content === undefined) {
+				throw new Error("Bailian API returned empty response content")
+			}
+			return content
 		} catch (error) {
 			throw handleOpenAIError(error, "Bailian")
 		}

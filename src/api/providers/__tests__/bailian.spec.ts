@@ -432,6 +432,32 @@ describe("BailianHandler", () => {
 		expect(callArgs).not.toHaveProperty("enable_thinking")
 	})
 
+	it("completePrompt throws when response content is null", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			apiModelId: "qwen3.6-plus",
+		})
+
+		mockCreate.mockResolvedValueOnce({
+			choices: [{ message: { content: null } }],
+		})
+
+		await expect(h.completePrompt("test")).rejects.toThrow("empty response content")
+	})
+
+	it("completePrompt throws when response content is undefined", async () => {
+		const h = new BailianHandler({
+			bailianApiKey: "test-key",
+			apiModelId: "qwen3.6-plus",
+		})
+
+		mockCreate.mockResolvedValueOnce({
+			choices: [{ message: {} }],
+		})
+
+		await expect(h.completePrompt("test")).rejects.toThrow("empty response content")
+	})
+
 	describe("getModelsFromCache integration", () => {
 		it("uses cached model info when found (cache tier hit)", () => {
 			vi.mocked(getModelsFromCache).mockReturnValue({
