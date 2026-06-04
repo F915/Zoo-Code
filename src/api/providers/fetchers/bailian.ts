@@ -1,6 +1,7 @@
 import type { ModelRecord } from "@roo-code/types"
 import { bailianModels } from "@roo-code/types"
 
+import { TelemetryService } from "@roo-code/telemetry"
 import { DEFAULT_HEADERS } from "../constants"
 
 /**
@@ -132,7 +133,8 @@ export async function getBailianModels(baseUrl?: string, apiKey?: string): Promi
 			let errorBody = ""
 			try {
 				errorBody = await response.text()
-			} catch {
+			} catch (e) {
+				console.error("[getBailianModels] Failed to read error response body:", e)
 				errorBody = "(unable to read response body)"
 			}
 
@@ -142,6 +144,11 @@ export async function getBailianModels(baseUrl?: string, apiKey?: string): Promi
 				url,
 				body: errorBody.substring(0, 500),
 			})
+
+			TelemetryService.instance.captureException(
+				new Error(`[getBailianModels] HTTP ${response.status}: ${response.statusText}`),
+				{ extra: { url, status: response.status, body: errorBody.substring(0, 500) } },
+			)
 
 			const detail = errorBody.substring(0, 200)
 			throw new Error(`HTTP ${response.status}: ${response.statusText} — ${detail}`)
