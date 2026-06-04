@@ -23,6 +23,7 @@ import {
 	mimoModels,
 	bailianModels,
 } from "./providers/index.js"
+import { BAILIAN_REGIONS } from "./providers/bailian-pricing.js"
 
 /**
  * constants
@@ -354,19 +355,12 @@ const mimoSchema = apiModelIdProviderModelSchema.extend({
 
 const bailianSchema = apiModelIdProviderModelSchema.extend({
 	bailianApiKey: z.string().optional(),
-	bailianRegion: z
-		.enum([
-			"beijing",
-			"singapore",
-			"virginia",
-			"frankfurt",
-			"hongkong",
-			"coding-plan",
-			"token-plan",
-			"token-plan-sgp",
-		])
+	bailianRegion: z.enum(BAILIAN_REGIONS).optional(),
+	bailianWorkspaceId: z.string()
+		.refine((val) => /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(val), {
+			message: "Workspace ID must contain only alphanumeric characters, hyphens, and underscores",
+		})
 		.optional(),
-	bailianWorkspaceId: z.string().optional(),
 	bailianCustomModelInfo: modelInfoSchema.nullish(),
 })
 
