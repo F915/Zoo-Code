@@ -119,6 +119,22 @@ describe("BailianHandler", () => {
 		expect(() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "hongkong" })).toThrow()
 	})
 
+	it("should throw when region is not recognized", () => {
+		expect(() => new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "invalid-region" as any })).toThrow(
+			/Unknown Bailian region/,
+		)
+	})
+
+	it("error message lists valid regions", () => {
+		try {
+			new BailianHandler({ bailianApiKey: "test-key", bailianRegion: "unknown" as any })
+			expect.unreachable("should have thrown")
+		} catch (e: any) {
+			expect(e.message).toContain("beijing")
+			expect(e.message).toContain("singapore")
+		}
+	})
+
 	// --- Streaming ---
 
 	it("createMessage should yield text content from stream", async () => {
