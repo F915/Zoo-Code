@@ -32,7 +32,7 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 			/>
 		</div>
 	),
-	VSCodeDropdown: ({ children, value, onChange, className }: any) => (
+	VSCodeDropdown: ({ children, value: _value, onChange: _onChange, className }: any) => (
 		<div className={className} data-testid="mock-dropdown">
 			{children}
 		</div>
@@ -49,7 +49,7 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 
 // Mock UI components
 vi.mock("@src/components/ui", () => ({
-	Button: ({ children, onClick, variant }: any) => (
+	Button: ({ children, onClick, variant: _variant }: any) => (
 		<button onClick={onClick} data-testid="mock-button">
 			{children}
 		</button>

@@ -89,8 +89,6 @@ export function getBailianPrice(modelId: string, region?: BailianRegion): Bailia
 			base = INTL_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break
 		case "hongkong":
-			base = HK_EU_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
-			break
 		case "frankfurt":
 			base = HK_EU_PRICES[canonicalKey as BailianModelId] ?? CN_GLOBAL_PRICES[canonicalKey as BailianModelId]
 			break

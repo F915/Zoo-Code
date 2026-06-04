@@ -1,5 +1,15 @@
 import { getBailianModels } from "../bailian"
 
+// Mock TelemetryService
+vi.mock("@roo-code/telemetry", () => ({
+	TelemetryService: {
+		instance: {
+			captureEvent: vi.fn(),
+			captureException: vi.fn(),
+		},
+	},
+}))
+
 // Mock global fetch
 const mockFetch = vi.fn()
 vi.stubGlobal("fetch", mockFetch)

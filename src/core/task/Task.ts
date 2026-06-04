@@ -1437,6 +1437,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			this.api = buildApiHandler(this.apiConfiguration)
 		} catch (error) {
 			console.error(`Failed to rebuild API handler: ${error instanceof Error ? error.message : String(error)}`)
+			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
+				extra: { provider: newApiConfiguration.apiProvider, action: "updateApiConfiguration" },
+			})
 			throw error
 		}
 	}

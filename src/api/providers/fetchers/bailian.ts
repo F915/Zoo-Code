@@ -60,7 +60,7 @@ function isNonTextModel(modelId: string): boolean {
  * When multiple preset keys are substrings of the API ID, the longest
  * matching key wins (more specific match). When two keys have equal
  * length (e.g. both "model-v1" and "model-v2" are substrings of
- * "model-v1-v2"), the result depends on Object.keys() iteration order
+ * "model-v1-v2"), the result depends on Object.keys() iteration order
  * — which follows insertion order in the bailianModels object. This
  * is not a practical concern with the current preset set because no
  * two presets share a common substring of equal length.

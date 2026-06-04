@@ -218,7 +218,7 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			const responseAny = response as any
 			if (responseAny.base_resp?.status_code && responseAny.base_resp.status_code !== 0) {
 				throw new Error(
-					`Bailian API Error (${responseAny.base_resp.status_code}): ${responseAny.base_resp.status_msg || "Unknown error"}`,
+					`API Error (${responseAny.base_resp.status_code}): ${responseAny.base_resp.status_msg || "Unknown error"}`,
 				)
 			}
 			const content = response.choices?.[0]?.message.content

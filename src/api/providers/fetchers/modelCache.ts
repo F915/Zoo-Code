@@ -195,7 +195,11 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 		// Log the error and re-throw it so the caller can handle it (e.g., show a UI message).
 		console.error(`[getModels] Failed to fetch models in modelCache for ${provider}:`, error)
 
-		throw error // Re-throw the original error to be handled by the caller.
+		TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
+	extra: { provider, action: "getModels" },
+})
+
+throw error // Re-throw the original error to be handled by the caller.
 	}
 }
 
@@ -268,7 +272,10 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 			if (shouldSkipCache) {
 				return {}
 			}
-			return getModelsFromCache(provider) || {}
+			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
+	extra: { provider, action: "refreshModels" },
+})
+return getModelsFromCache(provider) || {}
 		} finally {
 			// Always clean up the in-flight tracking
 			if (!shouldSkipCache) {
@@ -301,8 +308,12 @@ export async function initializeModelCacheRefresh(): Promise<void> {
 
 		// Refresh each provider in background (fire and forget)
 		for (const { options } of publicProviders) {
-			refreshModels(options).catch(() => {
-				// Silent fail - old cache remains available
+			refreshModels(options).catch((error) => {
+				console.error(`[initializeModelCacheRefresh] Background refresh failed for ${options.provider}:`, error)
+				TelemetryService.instance.captureException(
+					error instanceof Error ? error : new Error(String(error)),
+					{ extra: { provider: options.provider, action: "backgroundRefresh" } },
+				)
 			})
 
 			// Small delay between refreshes to avoid API rate limits
