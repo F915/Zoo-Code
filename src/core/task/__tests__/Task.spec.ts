@@ -12,6 +12,7 @@ import { TelemetryService } from "@roo-code/telemetry"
 import { Task } from "../Task"
 import { ClineProvider } from "../../webview/ClineProvider"
 import { ApiStreamChunk } from "../../../api/transform/stream"
+import * as apiModule from "../../../api"
 import { ContextProxy } from "../../config/ContextProxy"
 import { processUserContentMentions } from "../../mentions/processUserContentMentions"
 import { MultiSearchReplaceDiffStrategy } from "../../diff/strategies/multi-search-replace"
@@ -393,6 +394,43 @@ describe("Cline", () => {
 			expect(() => {
 				new Task({ provider: mockProvider, apiConfiguration: mockApiConfig })
 			}).toThrow("Either historyItem or task/images must be provided")
+		})
+
+		it("constructor catches buildApiHandler failure without crashing", () => {
+			// Spy on buildApiHandler to throw simulating an invalid config
+			const buildApiHandlerSpy = vi.spyOn(apiModule, "buildApiHandler").mockImplementationOnce(() => {
+				throw new Error("Invalid Bailian config: missing workspaceId for frankfurt region")
+			})
+
+			// Spy on TelemetryService captureException
+			const captureExceptionSpy = vi.spyOn(TelemetryService.instance, "captureException")
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: {
+					apiProvider: "bailian",
+					bailianRegion: "frankfurt",
+					// Missing bailianWorkspaceId — should trigger buildApiHandler to throw
+				} as ProviderSettings,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Task instance should be created successfully (no crash)
+			expect(task).toBeDefined()
+			// api should be undefined since handler construction failed
+			expect((task as any).api).toBeUndefined()
+			// Telemetry should have captured the exception
+			expect(captureExceptionSpy).toHaveBeenCalledTimes(1)
+			const capturedError = captureExceptionSpy.mock.calls[0][0]
+			expect(capturedError.message).toContain("Invalid Bailian config")
+			expect(captureExceptionSpy.mock.calls[0][1]).toMatchObject({
+				extra: { provider: "bailian", action: "Task.constructor" },
+			})
+
+			// Cleanup
+			buildApiHandlerSpy.mockRestore()
+			captureExceptionSpy.mockRestore()
 		})
 	})
 

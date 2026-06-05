@@ -71,7 +71,7 @@ function isNonTextModel(modelId: string): boolean {
  *          or `null` if no preset matches.
  */
 export function findMatchingPreset(apiModelId: string): string | null {
-	const lowerId = apiModelId.toLowerCase()
+	const lowerId = apiModelId.trim().toLowerCase()
 	const presetKeys = Object.keys(bailianModels)
 
 	// Priority 1: exact match (case-insensitive)
@@ -186,6 +186,7 @@ export async function getBailianModels(baseUrl?: string, apiKey?: string): Promi
 					contextWindow: 200_000,
 					supportsImages: false,
 					supportsPromptCache: false,
+					supportsTemperature: false,
 				}
 			}
 		}

@@ -35,9 +35,19 @@ const memoryCache = new NodeCache({ stdTTL: 5 * 60, checkperiod: 5 * 60 })
 // Zod schema for validating ModelRecord structure from disk cache
 const modelRecordSchema = z.record(z.string(), modelInfoSchema)
 
+/** Normalize a base URL for use as a cache/dedup key suffix. */
+function normalizeBaseUrl(url?: string): string {
+	return (url || "").replace(/\/+$/, "")
+}
+
+/** Build a dedup key that includes the provider name AND the base URL. */
+function inFlightKey(provider: RouterName, baseUrl?: string): string {
+	return `${provider}:${normalizeBaseUrl(baseUrl)}`
+}
+
 // Track in-flight refresh requests to prevent concurrent API calls for the same provider
 // This prevents race conditions where multiple calls might overwrite each other's results
-const inFlightRefresh = new Map<RouterName, Promise<ModelRecord>>()
+const inFlightRefresh = new Map<string, Promise<ModelRecord>>()
 
 // Providers whose model lists are scoped to the signed-in user (e.g. per-account
 // allowlists or org policies). For these we MUST NOT cache results on disk or
@@ -196,10 +206,10 @@ export const getModels = async (options: GetModelsOptions): Promise<ModelRecord>
 		console.error(`[getModels] Failed to fetch models in modelCache for ${provider}:`, error)
 
 		TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
-	extra: { provider, action: "getModels" },
-})
+			extra: { provider, action: "getModels" },
+		})
 
-throw error // Re-throw the original error to be handled by the caller.
+		throw error // Re-throw the original error to be handled by the caller.
 	}
 }
 
@@ -216,6 +226,7 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 	const { provider } = options
 
 	const shouldSkipCache = isAuthScopedProvider(provider)
+	const key = inFlightKey(provider, options.baseUrl)
 
 	// Check if there's already an in-flight refresh for this provider.
 	// This prevents race conditions where multiple concurrent refreshes might
@@ -224,7 +235,7 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 	// (e.g., after a sign-out/sign-in within the same session) and we must
 	// not return the first caller's results to the second caller.
 	if (!shouldSkipCache) {
-		const existingRequest = inFlightRefresh.get(provider)
+		const existingRequest = inFlightRefresh.get(key)
 		if (existingRequest) {
 			return existingRequest
 		}
@@ -269,24 +280,24 @@ export const refreshModels = async (options: GetModelsOptions): Promise<ModelRec
 			// For auth-scoped providers (zoo-gateway) we MUST NOT return cached models from a prior
 			// session, since they could belong to a different user — return empty instead.
 			console.error(`[refreshModels] Failed to refresh ${provider} models:`, error)
+			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
+				extra: { provider, action: "refreshModels" },
+			})
 			if (shouldSkipCache) {
 				return {}
 			}
-			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
-	extra: { provider, action: "refreshModels" },
-})
-return getModelsFromCache(provider) || {}
+			return getModelsFromCache(provider) || {}
 		} finally {
 			// Always clean up the in-flight tracking
 			if (!shouldSkipCache) {
-				inFlightRefresh.delete(provider)
+				inFlightRefresh.delete(key)
 			}
 		}
 	})()
 
 	// Track the in-flight request (auth-scoped providers are excluded; see above).
 	if (!shouldSkipCache) {
-		inFlightRefresh.set(provider, refreshPromise)
+		inFlightRefresh.set(key, refreshPromise)
 	}
 
 	return refreshPromise
@@ -310,10 +321,9 @@ export async function initializeModelCacheRefresh(): Promise<void> {
 		for (const { options } of publicProviders) {
 			refreshModels(options).catch((error) => {
 				console.error(`[initializeModelCacheRefresh] Background refresh failed for ${options.provider}:`, error)
-				TelemetryService.instance.captureException(
-					error instanceof Error ? error : new Error(String(error)),
-					{ extra: { provider: options.provider, action: "backgroundRefresh" } },
-				)
+				TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
+					extra: { provider: options.provider, action: "backgroundRefresh" },
+				})
 			})
 
 			// Small delay between refreshes to avoid API rate limits

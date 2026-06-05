@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useMemo } from "react"
 import { Checkbox } from "vscrui"
 import { VSCodeTextField, VSCodeDropdown, VSCodeOption } from "@vscode/webview-ui-toolkit/react"
 
@@ -7,8 +7,10 @@ import {
 	type ModelInfo,
 	type OrganizationAllowList,
 	type RouterModels,
+	type BailianRegion,
 	bailianModels,
 	bailianDefaultModelId,
+	BAILIAN_REGIONS,
 } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
@@ -58,26 +60,69 @@ export const Bailian = ({
 	// Static presets ("bailianModels") overwrite matching keys from routerModels
 	// to ensure known models always get authoritative specs. API models that
 	// don't match any preset appear as additional entries with conservative defaults.
-	const mergedModels = {
-		...(routerModels?.bailian ?? {}),
-		...bailianModels,
-	} as Record<string, ModelInfo>
+	const mergedModels = useMemo(
+		() =>
+			({
+				...(routerModels?.bailian ?? {}),
+				...bailianModels,
+			}) as Record<string, ModelInfo>,
+		[routerModels?.bailian],
+	)
+
+	// Build the set of "known" model IDs: static preset keys plus any
+	// API-returned model IDs that canonicalize to a preset. A model is
+	// "known" when findMatchingPreset() would return a match — i.e. its
+	// ID is an exact or substring match of a static preset key after
+	// case-insensitive normalization.
+	// This mirrors the handler-side findMatchingPreset() logic in
+	// src/api/providers/fetchers/bailian.ts but runs in the webview
+	// context where we cannot import from the extension host.
+	const knownModelIds = useMemo(() => {
+		const ids = new Set(Object.keys(bailianModels))
+		const presetKeys = Object.keys(bailianModels)
+		for (const apiId of Object.keys(routerModels?.bailian ?? {})) {
+			const lower = apiId.trim().toLowerCase()
+			// Exact match (case-insensitive)
+			if (presetKeys.some((k) => k.toLowerCase() === lower)) {
+				ids.add(apiId)
+				continue
+			}
+			// Substring match — e.g. "qwen3.7-max" is a substring of
+			// the API-returned "qwen3.7-max-2026-05-17"
+			if (presetKeys.some((k) => lower.includes(k.toLowerCase()))) {
+				ids.add(apiId)
+			}
+		}
+		return ids
+	}, [routerModels?.bailian])
 
 	const modelId = (apiConfiguration.apiModelId ?? "").trim()
-	const isCustomModel = !!(modelId && !Object.hasOwn(bailianModels, modelId))
+	const isCustomModel = !!(modelId && !knownModelIds.has(modelId))
 
 	// Stable sort callback so ModelPicker's useMemo dependency doesn't
 	// invalidate on every render.
-	const sortModels = useCallback(
-		(a: string, b: string) => {
-			const aPreset = Object.hasOwn(bailianModels, a)
-			const bPreset = Object.hasOwn(bailianModels, b)
-			if (aPreset !== bPreset) return aPreset ? -1 : 1
-			return a.localeCompare(b)
-		},
-		[],
-	)
+	// Only static presets (bailianModels keys) sort to the top.
+	// Canonicalized matches (versioned/named-space IDs) use preset
+	// params but sort alongside unknown models — they are not pinned.
+	const sortModels = useCallback((a: string, b: string) => {
+		const aPreset = Object.hasOwn(bailianModels, a)
+		const bPreset = Object.hasOwn(bailianModels, b)
+		if (aPreset !== bPreset) return aPreset ? -1 : 1
+		return a.localeCompare(b)
+	}, [])
 	const defaultInfo = bailianModels[bailianDefaultModelId] as ModelInfo
+
+	const regionLabels: Record<BailianRegion, string> = {
+		beijing: t("settings:providers.bailianRegionBeijing"),
+		singapore: t("settings:providers.bailianRegionSingapore"),
+		virginia: t("settings:providers.bailianRegionVirginia"),
+		frankfurt: t("settings:providers.bailianRegionFrankfurt"),
+		hongkong: t("settings:providers.bailianRegionHongKong"),
+		"coding-plan": t("settings:providers.bailianRegionCodingPlan"),
+		"token-plan": t("settings:providers.bailianRegionTokenPlan"),
+		"token-plan-sgp": t("settings:providers.bailianRegionTokenPlanSgp"),
+	}
+
 	const customInfo = (apiConfiguration?.bailianCustomModelInfo ?? undefined) as ModelInfo | undefined
 
 	return (
@@ -89,16 +134,11 @@ export const Bailian = ({
 					value={apiConfiguration.bailianRegion ?? "beijing"}
 					onChange={handleInputChange("bailianRegion")}
 					className={cn("w-full")}>
-					<VSCodeOption value="beijing">{t("settings:providers.bailianRegionBeijing")}</VSCodeOption>
-					<VSCodeOption value="singapore">{t("settings:providers.bailianRegionSingapore")}</VSCodeOption>
-					<VSCodeOption value="virginia">{t("settings:providers.bailianRegionVirginia")}</VSCodeOption>
-					<VSCodeOption value="frankfurt">{t("settings:providers.bailianRegionFrankfurt")}</VSCodeOption>
-					<VSCodeOption value="hongkong">{t("settings:providers.bailianRegionHongKong")}</VSCodeOption>
-					<VSCodeOption value="coding-plan">{t("settings:providers.bailianRegionCodingPlan")}</VSCodeOption>
-					<VSCodeOption value="token-plan">{t("settings:providers.bailianRegionTokenPlan")}</VSCodeOption>
-					<VSCodeOption value="token-plan-sgp">
-						{t("settings:providers.bailianRegionTokenPlanSgp")}
-					</VSCodeOption>
+					{BAILIAN_REGIONS.map((region) => (
+						<VSCodeOption key={region} value={region}>
+							{regionLabels[region]}
+						</VSCodeOption>
+					))}
 				</VSCodeDropdown>
 			</div>
 
@@ -157,7 +197,7 @@ export const Bailian = ({
 					// Clear custom model overrides when switching to a preset
 					// model so stale bailianCustomModelInfo doesn't leak into
 					// the UI display or API requests.
-					if (Object.hasOwn(bailianModels, newModelId)) {
+					if (knownModelIds.has(newModelId)) {
 						setApiConfigurationField("bailianCustomModelInfo", null)
 					}
 				}}
@@ -173,7 +213,11 @@ export const Bailian = ({
 					{/* maxTokens */}
 					<div>
 						<VSCodeTextField
-							value={customInfo?.maxTokens != null ? String(customInfo.maxTokens) : (defaultInfo.maxTokens?.toString() ?? "")}
+							value={
+								customInfo?.maxTokens != null
+									? String(customInfo.maxTokens)
+									: (defaultInfo.maxTokens?.toString() ?? "")
+							}
 							type="text"
 							style={{
 								borderColor:
@@ -214,6 +258,8 @@ export const Bailian = ({
 								const value = parseInt((e.target as HTMLInputElement).value)
 								return {
 									...(customInfo ?? ({} as ModelInfo)),
+									// contextWindow is required for model operation;
+									// fall back to the default instead of clearing to undefined
 									contextWindow: isNaN(value) ? defaultInfo.contextWindow : value,
 								}
 							})}
@@ -365,11 +411,11 @@ export const Bailian = ({
 					</div>
 
 					{/* cache prices — conditional on supportsPromptCache */}
-					{(customInfo?.supportsPromptCache || (!customInfo && defaultInfo.supportsPromptCache)) && (
+					{(customInfo?.supportsPromptCache ?? defaultInfo.supportsPromptCache) && (
 						<>
 							<div>
 								<VSCodeTextField
-									value={customInfo?.cacheReadsPrice?.toString() ?? "0"}
+									value={customInfo?.cacheReadsPrice?.toString() ?? ""}
 									type="text"
 									style={{
 										borderColor:
@@ -383,7 +429,7 @@ export const Bailian = ({
 										const value = parseFloat((e.target as HTMLInputElement).value)
 										return {
 											...(customInfo ?? ({} as ModelInfo)),
-											cacheReadsPrice: isNaN(value) ? 0 : value,
+											cacheReadsPrice: isNaN(value) ? undefined : value,
 										}
 									})}
 									placeholder={t("settings:placeholders.numbers.inputPrice")}
@@ -406,7 +452,7 @@ export const Bailian = ({
 							</div>
 							<div>
 								<VSCodeTextField
-									value={customInfo?.cacheWritesPrice?.toString() ?? "0"}
+									value={customInfo?.cacheWritesPrice?.toString() ?? ""}
 									type="text"
 									style={{
 										borderColor:
@@ -420,7 +466,7 @@ export const Bailian = ({
 										const value = parseFloat((e.target as HTMLInputElement).value)
 										return {
 											...(customInfo ?? ({} as ModelInfo)),
-											cacheWritesPrice: isNaN(value) ? 0 : value,
+											cacheWritesPrice: isNaN(value) ? undefined : value,
 										}
 									})}
 									placeholder={t("settings:placeholders.numbers.cacheWritePrice")}

@@ -358,7 +358,10 @@ describe("BailianHandler", () => {
 		const generator = h.createMessage("sys", [])
 		await generator.next()
 
-		expect(mockCreate).toHaveBeenCalledWith(expect.not.objectContaining({ temperature: expect.any(Number) }), undefined)
+		expect(mockCreate).toHaveBeenCalledWith(
+			expect.not.objectContaining({ temperature: expect.any(Number) }),
+			undefined,
+		)
 	})
 
 	it("should include temperature when user sets modelTemperature", async () => {
@@ -598,24 +601,21 @@ describe("BailianHandler", () => {
 			expect(texts).not.toContain("...")
 		})
 
-	it("sends enable_thinking:false when DeepSeek V4 thinking is disabled", async () => {
-		const h = new BailianHandler({
-			bailianApiKey: "test-key",
-			enableReasoningEffort: false,
-			apiModelId: "deepseek-v4-pro",
+		it("sends enable_thinking:false when DeepSeek V4 thinking is disabled", async () => {
+			const h = new BailianHandler({
+				bailianApiKey: "test-key",
+				enableReasoningEffort: false,
+				apiModelId: "deepseek-v4-pro",
+			})
+
+			mockCreate.mockImplementationOnce(() => ({
+				[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
+			}))
+
+			const generator = h.createMessage("system prompt", [])
+			await generator.next()
+
+			expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ enable_thinking: false }), undefined)
 		})
-
-		mockCreate.mockImplementationOnce(() => ({
-			[Symbol.asyncIterator]: () => ({ next: vitest.fn().mockResolvedValue({ done: true }) }),
-		}))
-
-		const generator = h.createMessage("system prompt", [])
-		await generator.next()
-
-		expect(mockCreate).toHaveBeenCalledWith(
-			expect.objectContaining({ enable_thinking: false }),
-			undefined,
-		)
-	})
 	})
 })

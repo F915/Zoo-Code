@@ -30,7 +30,7 @@ const CACHE_READS_RATIO = 0.1
 // Single source of truth for all Bailian pricing.
 // bailian.ts model definitions MUST NOT duplicate pricing — use getBailianPrice().
 // Ordered: Qwen > DeepSeek > GLM > Kimi > MiniMax; higher version > lower; max > plus > flash > other
-const CN_GLOBAL_PRICES: Record<BailianModelId, BailianPrice> = {
+export const CN_GLOBAL_PRICES: Partial<Record<BailianModelId, BailianPrice>> = {
 	"qwen3.7-max": { inputPrice: 1.65, outputPrice: 4.951 },
 	"qwen3.7-plus": { inputPrice: 0.287, outputPrice: 1.147 },
 	"qwen3.6-plus": { inputPrice: 0.276, outputPrice: 1.651 },
@@ -41,12 +41,11 @@ const CN_GLOBAL_PRICES: Record<BailianModelId, BailianPrice> = {
 	"deepseek-v4-flash": { inputPrice: 0.138, outputPrice: 0.275 },
 	"glm-5.1": { inputPrice: 0.825, outputPrice: 3.301 },
 	"kimi-k2.6": { inputPrice: 0.8939, outputPrice: 3.7131 },
-	"mimo-v2.5-pro": { inputPrice: 0, outputPrice: 0 },
 	"MiniMax-M2.5": { inputPrice: 0.304, outputPrice: 1.213 },
 }
 
 // International (Singapore + Token Plan Singapore)
-const INTL_PRICES: Partial<Record<BailianModelId, BailianPrice>> = {
+export const INTL_PRICES: Partial<Record<BailianModelId, BailianPrice>> = {
 	"qwen3.7-max": { inputPrice: 2.5, outputPrice: 7.5 },
 	"qwen3.7-plus": { inputPrice: 0.4, outputPrice: 1.6 },
 	"qwen3.6-plus": { inputPrice: 0.5, outputPrice: 3 },
@@ -72,9 +71,11 @@ export function getBailianPrice(modelId: string, region?: BailianRegion): Bailia
 	// Canonicalize versioned/named-space API IDs (e.g. "qwen3.7-max-2026-05-17",
 	// "kimi/kimi-k2.6", "ZHIPU/GLM-5.1") to preset keys for pricing lookup.
 	// Uses case-insensitive exact match → longest substring match against
-	// CN_GLOBAL_PRICES (the master table). Matches the fetcher's
-	// findMatchingPreset() logic.
-	const canonicalKey = findMatchingPricingKey(modelId, CN_GLOBAL_PRICES) ?? modelId
+	// ALL pricing tables (not just CN_GLOBAL_PRICES) so that models
+	// exclusive to a specific region table can still be resolved.
+	// Matches the fetcher's findMatchingPreset() logic.
+	const ALL_KEYS = { ...INTL_PRICES, ...HK_EU_PRICES, ...US_PRICES, ...CN_GLOBAL_PRICES }
+	const canonicalKey = findMatchingPricingKey(modelId, ALL_KEYS) ?? modelId
 
 	let base: BailianPrice | undefined
 

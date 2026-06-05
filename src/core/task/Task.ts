@@ -485,7 +485,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		})
 
 		this.apiConfiguration = apiConfiguration
-		this.api = buildApiHandler(this.apiConfiguration)
+		try {
+			this.api = buildApiHandler(this.apiConfiguration)
+		} catch (error) {
+			console.error(
+				`Failed to build API handler in Task constructor: ${error instanceof Error ? error.message : String(error)}`,
+			)
+			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
+				extra: { provider: apiConfiguration.apiProvider, action: "Task.constructor" },
+			})
+			this.api = undefined as any
+		}
 		this.autoApprovalHandler = new AutoApprovalHandler()
 
 		this.consecutiveMistakeLimit = consecutiveMistakeLimit ?? DEFAULT_CONSECUTIVE_MISTAKE_LIMIT
@@ -1431,10 +1441,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	 * @param newApiConfiguration - The new API configuration to use
 	 */
 	public updateApiConfiguration(newApiConfiguration: ProviderSettings): void {
-		// Update the configuration and rebuild the API handler
-		this.apiConfiguration = newApiConfiguration
+		// Build the handler first, then update config — keep the pair atomic
+		// so a failure doesn't leave config and handler out of sync.
 		try {
-			this.api = buildApiHandler(this.apiConfiguration)
+			this.api = buildApiHandler(newApiConfiguration)
+			this.apiConfiguration = newApiConfiguration
 		} catch (error) {
 			console.error(`Failed to rebuild API handler: ${error instanceof Error ? error.message : String(error)}`)
 			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {

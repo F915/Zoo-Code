@@ -107,12 +107,20 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 		// This ensures versioned/named-space IDs (e.g. "qwen3.7-max-2026-05-17"
 		// matching preset "qwen3.7-max") get the correct capabilities on cold start.
 		const matchedPresetInfo =
-			canonicalKey !== id && canonicalKey in this.providerModels
+			canonicalKey !== id && Object.hasOwn(this.providerModels, canonicalKey as string)
 				? this.providerModels[canonicalKey as BailianModelId]
 				: undefined
 
 		const baseInfo =
-			staticInfo ?? cachedInfo ?? matchedPresetInfo ?? ({ contextWindow: 200_000, supportsImages: false, supportsPromptCache: false } as ModelInfo)
+			staticInfo ??
+			cachedInfo ??
+			matchedPresetInfo ??
+			({
+				contextWindow: 200_000,
+				supportsImages: false,
+				supportsPromptCache: false,
+				supportsTemperature: false,
+			} as ModelInfo)
 
 		const info: ModelInfo = { ...baseInfo, ...price, ...(custom || {}) }
 
@@ -218,11 +226,11 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 			const responseAny = response as any
 			if (responseAny.base_resp?.status_code && responseAny.base_resp.status_code !== 0) {
 				throw new Error(
-					`API Error (${responseAny.base_resp.status_code}): ${responseAny.base_resp.status_msg || "Unknown error"}`,
+					`Bailian API Error (${responseAny.base_resp.status_code}): ${responseAny.base_resp.status_msg || "Unknown error"}`,
 				)
 			}
-			const content = response.choices?.[0]?.message.content
-			if (content === null || content === undefined) {
+			const content = response.choices?.[0]?.message?.content
+			if (content === null || content === undefined || content === "") {
 				throw new Error("Bailian API returned empty response content")
 			}
 			return content
@@ -255,10 +263,17 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 		const isEffortReasoningModel = Array.isArray(modelInfo.supportsReasoningEffort)
 		const isBinaryReasoningModel = modelInfo.supportsReasoningBinary === true && !isEffortReasoningModel
 
-		if (isBinaryReasoningModel && this.options.enableReasoningEffort !== false) {
-			params.enable_thinking = true
-			if (this.options.modelMaxThinkingTokens) {
-				params.thinking_budget = this.options.modelMaxThinkingTokens
+		if (isBinaryReasoningModel) {
+			if (this.options.enableReasoningEffort !== false) {
+				params.enable_thinking = true
+				if (this.options.modelMaxThinkingTokens != null) {
+					params.thinking_budget = this.options.modelMaxThinkingTokens
+				}
+			} else {
+				// When user explicitly disables thinking on a binary reasoning model,
+				// send enable_thinking: false — per DashScope API docs,
+				// Qwen/GLM/Kimi default to thinking ON, so omission != disable.
+				params.enable_thinking = false
 			}
 		}
 
