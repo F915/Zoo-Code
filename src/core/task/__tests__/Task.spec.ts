@@ -396,7 +396,7 @@ describe("Cline", () => {
 			}).toThrow("Either historyItem or task/images must be provided")
 		})
 
-		it("constructor catches buildApiHandler failure without crashing", () => {
+		it("constructor rethrows buildApiHandler failure", () => {
 			// Spy on buildApiHandler to throw simulating an invalid config
 			const buildApiHandlerSpy = vi.spyOn(apiModule, "buildApiHandler").mockImplementationOnce(() => {
 				throw new Error("Invalid Bailian config: missing workspaceId for frankfurt region")
@@ -405,22 +405,24 @@ describe("Cline", () => {
 			// Spy on TelemetryService captureException
 			const captureExceptionSpy = vi.spyOn(TelemetryService.instance, "captureException")
 
-			const task = new Task({
-				provider: mockProvider,
-				apiConfiguration: {
-					apiProvider: "bailian",
-					bailianRegion: "frankfurt",
-					// Missing bailianWorkspaceId — should trigger buildApiHandler to throw
-				} as ProviderSettings,
-				task: "test task",
-				startTask: false,
-			})
+			// Constructor should throw — no Task instance is created
+			// with an undefined this.api (fail-fast, consistent with
+			// updateApiConfiguration).
+			expect(
+				() =>
+					new Task({
+						provider: mockProvider,
+						apiConfiguration: {
+							apiProvider: "bailian",
+							bailianRegion: "frankfurt",
+							// Missing bailianWorkspaceId — should trigger buildApiHandler to throw
+						} as ProviderSettings,
+						task: "test task",
+						startTask: false,
+					}),
+			).toThrow("Invalid Bailian config")
 
-			// Task instance should be created successfully (no crash)
-			expect(task).toBeDefined()
-			// api should be undefined since handler construction failed
-			expect((task as any).api).toBeUndefined()
-			// Telemetry should have captured the exception
+			// Telemetry should have captured the exception (logged before rethrow)
 			expect(captureExceptionSpy).toHaveBeenCalledTimes(1)
 			const capturedError = captureExceptionSpy.mock.calls[0][0]
 			expect(capturedError.message).toContain("Invalid Bailian config")

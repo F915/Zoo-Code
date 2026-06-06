@@ -494,7 +494,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			TelemetryService.instance.captureException(error instanceof Error ? error : new Error(String(error)), {
 				extra: { provider: apiConfiguration.apiProvider, action: "Task.constructor" },
 			})
-			this.api = undefined as any
+			throw error
 		}
 		this.autoApprovalHandler = new AutoApprovalHandler()
 

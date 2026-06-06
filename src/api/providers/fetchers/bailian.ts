@@ -186,7 +186,7 @@ export async function getBailianModels(baseUrl?: string, apiKey?: string): Promi
 					contextWindow: 200_000,
 					supportsImages: false,
 					supportsPromptCache: false,
-					supportsTemperature: false,
+					supportsTemperature: true,
 				}
 			}
 		}

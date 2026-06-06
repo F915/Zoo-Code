@@ -22,6 +22,27 @@ import { handleModelChangeSideEffects } from "../utils/providerModelConfig"
 import { ModelPicker } from "../ModelPicker"
 import { cn } from "@/lib/utils"
 
+/**
+ * Mirrors the handler-side findMatchingPreset() logic from
+ * src/api/providers/fetchers/bailian.ts for use in the webview
+ * context where we cannot import from the extension host.
+ *
+ * Returns true when the given model ID is an exact or substring
+ * match (case-insensitive) of a static preset key, meaning the
+ * handler will resolve it to a known preset rather than treating
+ * it as unknown/custom.
+ */
+function matchesPresetLocally(modelId: string): boolean {
+	const lower = modelId.trim().toLowerCase()
+	if (!lower) return false
+	const presetKeys = Object.keys(bailianModels)
+	// Exact match (case-insensitive)
+	if (presetKeys.some((k) => k.toLowerCase() === lower)) return true
+	// Substring match — e.g. "qwen3.7-max" is a substring of
+	// the API-returned "qwen3.7-max-2026-05-17"
+	return presetKeys.some((k) => lower.includes(k.toLowerCase()))
+}
+
 type BailianProps = {
 	apiConfiguration: ProviderSettings
 	setApiConfigurationField: <K extends keyof ProviderSettings>(
@@ -97,7 +118,7 @@ export const Bailian = ({
 	}, [routerModels?.bailian])
 
 	const modelId = (apiConfiguration.apiModelId ?? "").trim()
-	const isCustomModel = !!(modelId && !knownModelIds.has(modelId))
+	const isCustomModel = !!(modelId && !knownModelIds.has(modelId) && !matchesPresetLocally(modelId))
 
 	// Stable sort callback so ModelPicker's useMemo dependency doesn't
 	// invalidate on every render.
@@ -197,7 +218,7 @@ export const Bailian = ({
 					// Clear custom model overrides when switching to a preset
 					// model so stale bailianCustomModelInfo doesn't leak into
 					// the UI display or API requests.
-					if (knownModelIds.has(newModelId)) {
+					if (knownModelIds.has(newModelId) || matchesPresetLocally(newModelId)) {
 						setApiConfigurationField("bailianCustomModelInfo", null)
 					}
 				}}

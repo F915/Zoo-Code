@@ -119,7 +119,7 @@ export class BailianHandler extends BaseOpenAiCompatibleProvider<BailianModelId>
 				contextWindow: 200_000,
 				supportsImages: false,
 				supportsPromptCache: false,
-				supportsTemperature: false,
+				supportsTemperature: true,
 			} as ModelInfo)
 
 		const info: ModelInfo = { ...baseInfo, ...price, ...(custom || {}) }
