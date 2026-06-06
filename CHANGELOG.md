@@ -1,6 +1,6 @@
 # Zoo Code Changelog
 
-## 3.58.0
+## 3.58.1
 
 ### Minor Changes
 
