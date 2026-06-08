@@ -752,9 +752,8 @@
 		},
 		"profile": {
 			"label": "Substitució del terminal de Zoo Code",
-			"default": "Utilitza el perfil predeterminat de VS Code (recomanat)",
+			"followVscode": "Seguint el perfil de VS Code",
 			"description": "Per defecte, Zoo Code utilitza la shell que VS Code té configurada. Seleccioneu Substituir per triar un perfil de shell amb ruta explícita exposat per VS Code. Els perfils de només font (p. ex., l'entrada integrada de PowerShell) no es poden llistar aquí. <0>Més informació</0>",
-			"overrideLabel": "Substituir la shell per a Zoo Code",
 			"configureButton": "Trieu el perfil predeterminat a VS Code",
 			"noProfiles": "(no s'han trobat perfils amb ruta a terminal.integrated.profiles)"
 		}
