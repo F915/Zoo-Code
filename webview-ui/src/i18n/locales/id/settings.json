@@ -752,7 +752,7 @@
 		},
 		"profile": {
 			"label": "Penimpaan terminal Zoo Code",
-			"followVscode": "Mengikuti profil VS Code",
+			"followVscode": "Mengikuti profil VS Code (disarankan)",
 			"description": "Secara default Zoo Code menggunakan shell yang dikonfigurasi VS Code. Pilih Timpa untuk memilih profil shell berbasis jalur yang diekspos oleh VS Code. Profil hanya sumber (mis., entri PowerShell bawaan) tidak dapat tercantum di sini. <0>Pelajari lebih lanjut</0>",
 			"configureButton": "Pilih profil default di VS Code",
 			"noProfiles": "(tidak ada profil berbasis jalur di terminal.integrated.profiles)"

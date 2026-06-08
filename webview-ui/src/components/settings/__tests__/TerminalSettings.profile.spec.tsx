@@ -212,4 +212,27 @@ describe("TerminalSettings unified profile dropdown", () => {
 		// Compare DOM positions — checkbox should be before profile dropdown
 		expect(checkbox.compareDocumentPosition(profileDropdown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 	})
+
+	it("renders the Terminal icon inside the Configure button", () => {
+		setup()
+		const btn = screen.getByTestId("terminal-profile-configure-button")
+		const svg = btn.querySelector("svg")
+		expect(svg).toBeInTheDocument()
+	})
+
+	it("shows the correct i18n key for the profile label", () => {
+		setup()
+		expect(screen.getByText("settings:terminal.profile.label")).toBeInTheDocument()
+	})
+
+	it("shows the correct i18n key for the followVscode dropdown option", () => {
+		setup()
+		expect(screen.getByText("settings:terminal.profile.followVscode")).toBeInTheDocument()
+	})
+
+	it("shows the correct i18n key for the configure button text", () => {
+		setup()
+		const btn = screen.getByTestId("terminal-profile-configure-button")
+		expect(btn.textContent).toContain("settings:terminal.profile.configureButton")
+	})
 })

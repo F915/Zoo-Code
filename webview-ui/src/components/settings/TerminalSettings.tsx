@@ -5,6 +5,7 @@ import { VSCodeCheckbox, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { Trans } from "react-i18next"
 import { buildDocLink } from "@src/utils/docLinks"
 import { useEvent, useMount } from "react-use"
+import { Terminal } from "lucide-react"
 
 import { type ExtensionMessage, type TerminalOutputPreviewSize } from "@roo-code/types"
 
@@ -226,15 +227,16 @@ export const TerminalSettings = ({
 									</Select>
 
 									{!terminalProfile && (
-										<div className="mt-2">
+										<div className="mt-2 flex flex-col">
 											<Button
 												variant="secondary"
-												size="sm"
+												className="py-1"
 												onClick={() => {
 													onTerminalProfilePickerOpened?.()
 													vscode.postMessage({ type: "openTerminalProfilePicker" })
 												}}
 												data-testid="terminal-profile-configure-button">
+												<Terminal />
 												{t("settings:terminal.profile.configureButton")}
 											</Button>
 										</div>

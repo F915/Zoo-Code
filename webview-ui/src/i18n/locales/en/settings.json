@@ -820,10 +820,10 @@
 		},
 		"profile": {
 			"label": "Shell for Zoo Code",
-			"followVscode": "Following VS Code profile",
+			"followVscode": "Follow VS Code profile (recommended)",
 			"configureButton": "Choose default profile in VS Code",
 			"noProfiles": "(no path-based profiles found in terminal.integrated.profiles)",
-			"description": "By default Zoo Code uses whatever shell VS Code is configured to use. Select a specific profile to override. Source-only profiles cannot be listed here. <0>Learn more</0>"
+			"description": "Zoo Code uses the shell configured in VS Code by default. Select a specific terminal profile to override this. Only path-based profiles from terminal.integrated.profiles are listed here. <0>Learn more</0>"
 		}
 	},
 	"advancedSettings": {
