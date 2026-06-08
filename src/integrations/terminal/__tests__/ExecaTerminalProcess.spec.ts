@@ -430,7 +430,7 @@ describe("ExecaTerminalProcess", () => {
 			// try { this.subprocess?.kill("SIGKILL") } catch (e) {}
 			// F2 bug: catch body was empty — no diagnostic logged
 			const mockSubprocess = {
-				kill: vitest.fn(() => {
+				kill: vitest.fn((_signal?: string) => {
 					throw new Error("kill failed")
 				}),
 			}

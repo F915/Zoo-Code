@@ -59,9 +59,9 @@ export class Terminal extends BaseTerminal {
 			this.terminal = vscode.window.createTerminal(options)
 		}
 
-		// Only register ZDOTDIR cleanup when we actually set it (i.e. no profile
-		// override is active — see getEnv() for the same guard).
-		if (Terminal.getTerminalZdotdir() && !Terminal.getTerminalProfile()) {
+		// Only register ZDOTDIR cleanup when we actually set it (i.e. no resolved
+		// profile shell is active — see getEnv() for the same guard).
+		if (Terminal.getTerminalZdotdir() && Terminal.getProfileShell() === undefined) {
 			ShellIntegrationManager.terminalTmpDirs.set(id, env.ZDOTDIR)
 		}
 
@@ -268,11 +268,15 @@ export class Terminal extends BaseTerminal {
 			env.PROMPT_EOL_MARK = ""
 		}
 
-		// Handle ZDOTDIR for zsh if enabled. Skip when a profile override is
-		// active: VS Code's own shell integration injector also sets ZDOTDIR for
-		// zsh, and the two would fight each other (VS Code's ambient env wins per
-		// issue #96295). Let VS Code handle injection for the selected profile.
-		if (Terminal.getTerminalZdotdir() && !Terminal.getTerminalProfile()) {
+		// Handle ZDOTDIR for zsh if enabled. Skip when a concrete profile shell
+		// is resolved: VS Code's own shell integration injector also sets ZDOTDIR
+		// for zsh, and the two would fight each other (VS Code's ambient env wins
+		// per issue #96295). Let VS Code handle injection for the selected profile.
+		// A profile name may be set (getTerminalProfile() returns a string) even
+		// when the profile can't be resolved (missing/removed/source-only), so gate
+		// on getProfileShell() instead — only skip ZDOTDIR when we can actually
+		// hand off injection responsibility to VS Code.
+		if (Terminal.getTerminalZdotdir() && Terminal.getProfileShell() === undefined) {
 			env.ZDOTDIR = ShellIntegrationManager.zshInitTmpDir(env)
 		}
 
@@ -531,7 +535,10 @@ export class Terminal extends BaseTerminal {
 		// search PATH instead of trusting source string. This avoids
 		// false positives when the profile's source is "PowerShell" but
 		// pwsh is not actually installed (macOS/Linux without pwsh).
-		if (typeof profile.source === "string") {
+		// Also avoid probing PATH for non-PowerShell source-only profiles
+		// (e.g. "Git Bash", "Command Prompt") — only PowerShell sources
+		// should trigger PATH resolution for pwsh.
+		if (typeof profile.source === "string" && /powershell|pwsh/i.test(profile.source)) {
 			const pathFromSource = Terminal.resolveProfilePath(
 				platform === "win32" ? "pwsh.exe" : "pwsh",
 				platform,

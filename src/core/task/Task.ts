@@ -1325,6 +1325,12 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			{ interval: 100 },
 		)
 
+		if (this.abort) {
+			// Task was aborted while waiting for the ask response — don't
+			// proceed with a potentially undefined askResponse.
+			throw new AskIgnoredError("aborted")
+		}
+
 		if (this.lastMessageTs !== askTs) {
 			// Could happen if we send multiple asks in a row i.e. with
 			// command_output. It's important that when we know an ask could

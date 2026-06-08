@@ -37,12 +37,12 @@ describe("Terminal", () => {
 
 		// Default mocks: no WSL, no execaShellPath, no ZDOTDIR.
 		BaseTerminal.setExecaShellPath(undefined)
-		;(Terminal as any).getTerminalZdotdir = vi.fn().mockReturnValue(false)
+		vi.spyOn(Terminal, "getTerminalZdotdir" as any).mockReturnValue(false)
 		vi.spyOn(Terminal, "getShellIntegrationTimeout" as any).mockReturnValue(15_000)
 
 		// Silence ZDOTDIR helpers (tested explicitly in the ZDOTDIR describe).
 		vi.spyOn(ShellIntegrationManager, "zshInitTmpDir").mockReturnValue("/tmp/zoo-zdotdir")
-		;(ShellIntegrationManager as any).zshCleanupTmpDir = vi.fn()
+		vi.spyOn(ShellIntegrationManager, "zshCleanupTmpDir" as any).mockImplementation(() => {})
 	})
 
 	afterEach(() => {
