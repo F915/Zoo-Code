@@ -35,7 +35,14 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 			hide: vi.fn(),
 			show: vi.fn(),
 			sendText: vi.fn(),
-			shellIntegration: { executeCommand: vi.fn() },
+			shellIntegration: {
+				executeCommand: vi.fn().mockReturnValue({
+					// Real VS Code API always returns a TerminalShellExecution
+					// with .read() returning an async iterable. Empty iterable
+					// is safe — tests that need output mock their own stream.
+					read: vi.fn().mockReturnValue((async function* () {})()),
+				}),
+			},
 		}) as any
 
 	// Helper to stub `terminal.integrated.profiles.<platform>` config reads.
@@ -166,6 +173,21 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 				["/bin/bash", false],
 			])("isPowerShell(%s) === %s", (input, expected) => {
 				expect(Terminal.isPowerShell(input)).toBe(expected)
+			})
+		})
+
+		describe("isFish", () => {
+			it.each([
+				["/usr/bin/fish", true],
+				["/usr/local/bin/fish", true],
+				["C:\\msys64\\usr\\bin\\fish.exe", true],
+				["/usr/bin/fish.exe", true],
+				["/bin/bash", false],
+				["/usr/bin/zsh", false],
+				["fishy", false],
+				["fish", false],
+			])("isFish(%s) === %s", (input, expected) => {
+				expect(Terminal.isFish(input)).toBe(expected)
 			})
 		})
 
@@ -361,6 +383,26 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 					})
 
 				expect(Terminal.isActiveShellPowerShell("win32")).toBe(true)
+			})
+		})
+
+		describe("isActiveShellFish", () => {
+			it("returns false when no override and no default profile configured", () => {
+				Terminal.setTerminalProfile(undefined)
+				stubProfiles({})
+				expect(Terminal.isActiveShellFish("linux")).toBe(false)
+			})
+
+			it("returns true when profile override resolves to fish", () => {
+				stubProfiles({ linux: { fish: { path: "/usr/bin/fish" } } })
+				Terminal.setTerminalProfile("fish")
+				expect(Terminal.isActiveShellFish("linux")).toBe(true)
+			})
+
+			it("returns false when profile override resolves to a non-fish shell", () => {
+				stubProfiles({ linux: { bash: { path: "/bin/bash" } } })
+				Terminal.setTerminalProfile("bash")
+				expect(Terminal.isActiveShellFish("linux")).toBe(false)
 			})
 		})
 	})
@@ -689,6 +731,219 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 			const env = Terminal.getEnv()
 			expect(zshInitTmpDirSpy).not.toHaveBeenCalled()
 			expect(env.ZDOTDIR).toBeUndefined()
+		})
+	})
+
+	describe("getConfiguredWslProfileArgs", () => {
+		beforeEach(() => {
+			Terminal.setTerminalProfile(undefined)
+		})
+
+		it("returns undefined on non-Windows platforms", () => {
+			expect(Terminal.getConfiguredWslProfileArgs("darwin")).toBeUndefined()
+			expect(Terminal.getConfiguredWslProfileArgs("linux")).toBeUndefined()
+		})
+
+		it("returns undefined when no default profile is configured", () => {
+			stubProfiles({})
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({ defaultValue: {}, globalValue: {} }),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: () => undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toBeUndefined()
+		})
+
+		it("returns undefined for non-WSL default profiles", () => {
+			stubProfiles({
+				windows: { PowerShell: { source: "PowerShell" } },
+			})
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({
+								defaultValue: { PowerShell: { source: "PowerShell" } },
+							}),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: (key: string) =>
+								key === "defaultProfile.windows"
+									? { defaultValue: "PowerShell" }
+									: undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toBeUndefined()
+		})
+
+		it("detects WSL by source field and returns args", () => {
+			stubProfiles({
+				windows: { Ubuntu: { source: "WSL", args: ["-d", "Ubuntu-22.04"] } },
+			})
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({
+								defaultValue: {
+									Ubuntu: { source: "WSL", args: ["-d", "Ubuntu-22.04"] },
+								},
+							}),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: (key: string) =>
+								key === "defaultProfile.windows"
+									? { defaultValue: "Ubuntu" }
+									: undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toEqual([
+				"-d",
+				"Ubuntu-22.04",
+			])
+		})
+
+		it("detects WSL by profile name pattern", () => {
+			stubProfiles({
+				windows: { "Ubuntu WSL": {} },
+			})
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({
+								defaultValue: { "Ubuntu WSL": {} },
+							}),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: (key: string) =>
+								key === "defaultProfile.windows"
+									? { defaultValue: "Ubuntu WSL" }
+									: undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toEqual([])
+		})
+
+		it("normalizes string args to array", () => {
+			stubProfiles({
+				windows: { WSL: { source: "WSL", args: "-d Ubuntu-22.04" } },
+			})
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({
+								defaultValue: {
+									WSL: { source: "WSL", args: "-d Ubuntu-22.04" },
+								},
+							}),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: (key: string) =>
+								key === "defaultProfile.windows"
+									? { defaultValue: "WSL" }
+									: undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toEqual([
+				"-d Ubuntu-22.04",
+			])
+		})
+
+		it("ignores workspace settings (trusted-scope only)", () => {
+			// Workspace injects a WSL profile with args, but trusted-scope
+			// reading excludes workspaceValue — so it returns undefined.
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({
+								defaultValue: {},
+								workspaceValue: {
+									MaliciousWSL: { source: "WSL", args: ["--", "evil"] },
+								},
+							}),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: (key: string) =>
+								key === "defaultProfile.windows"
+									? { workspaceValue: "MaliciousWSL" }
+									: undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			// getConfiguredDefaultProfileName reads globalValue ?? defaultValue,
+			// both undefined here → returns undefined → method returns undefined.
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toBeUndefined()
+		})
+
+		it("returns [] for WSL profile with no args", () => {
+			stubProfiles({
+				windows: { WSL: { source: "WSL" } },
+			})
+			getConfigurationSpy = vi
+				.spyOn(vscode.workspace, "getConfiguration")
+				.mockImplementation((section?: string) => {
+					if (section === "terminal.integrated.profiles") {
+						return {
+							inspect: () => ({
+								defaultValue: { WSL: { source: "WSL" } },
+							}),
+						} as any
+					}
+					if (section === "terminal.integrated") {
+						return {
+							inspect: (key: string) =>
+								key === "defaultProfile.windows"
+									? { defaultValue: "WSL" }
+									: undefined,
+						} as any
+					}
+					return { get: (_key: string, defaultValue?: unknown) => defaultValue } as any
+				})
+
+			expect(Terminal.getConfiguredWslProfileArgs("win32")).toEqual([])
 		})
 	})
 })

@@ -1300,7 +1300,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Wait for askResponse to be set
 		await pWaitFor(
 			() => {
-				if (this.askResponse !== undefined || this.lastMessageTs !== askTs) {
+				if (this.askResponse !== undefined || this.lastMessageTs !== askTs || this.abort) {
 					return true
 				}
 

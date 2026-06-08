@@ -1,5 +1,6 @@
 import * as vscode from "vscode"
 import { userInfo } from "os"
+import { Terminal } from "../integrations/terminal/Terminal"
 
 export const WSL_EXE_PATH = "C:\\Windows\\System32\\wsl.exe" as const
 
@@ -9,68 +10,8 @@ const SHELL_PATHS = {
 	LINUX_DEFAULT: "/bin/bash",
 } as const
 
-interface WindowsTerminalProfile {
-	path?: string | string[]
-	args?: string | string[]
-	source?: "PowerShell" | "WSL"
-}
-
-type WindowsTerminalProfiles = Record<string, WindowsTerminalProfile>
-
 // -----------------------------------------------------
-// 1) WSL Profile Detection
-// -----------------------------------------------------
-
-function getWindowsTerminalConfig() {
-	try {
-		const config = vscode.workspace.getConfiguration("terminal.integrated")
-		const defaultProfileName = config.get<string>("defaultProfile.windows")
-		const profiles = config.get<WindowsTerminalProfiles>("profiles.windows") || {}
-		return { defaultProfileName, profiles }
-	} catch {
-		return { defaultProfileName: null, profiles: {} as WindowsTerminalProfiles }
-	}
-}
-
-/**
- * Returns the WSL profile path and args from the user's VS Code config, or null
- * if the default profile is not WSL.
- */
-export function getWslProfile(): { path: string; args: string[] } | null {
-	if (process.platform !== "win32") {
-		return null
-	}
-
-	const { defaultProfileName, profiles } = getWindowsTerminalConfig()
-
-	if (!defaultProfileName) {
-		return null
-	}
-
-	const profile = profiles[defaultProfileName]
-	const isWsl = profile?.source === "WSL" || /\bwsl\b/i.test(defaultProfileName)
-
-	if (!isWsl) {
-		return null
-	}
-
-	const args = normalizeShellArgs(profile?.args)
-
-	return {
-		path: WSL_EXE_PATH,
-		args: args.length > 0 ? args : [],
-	}
-}
-
-/** Normalizes shell args that can be a string or array of strings. */
-function normalizeShellArgs(args: string | string[] | undefined): string[] {
-	if (!args) return []
-	if (Array.isArray(args)) return args.filter((a) => a.length > 0)
-	return [args]
-}
-
-// -----------------------------------------------------
-// 2) Fallback Helpers
+// 1) Fallback Helpers
 // -----------------------------------------------------
 
 /**
@@ -112,7 +53,7 @@ function getSafeFallbackShell(): string {
 }
 
 // -----------------------------------------------------
-// 3) Public Shell Getter
+// 2) Public Shell Getter
 // -----------------------------------------------------
 
 /**
@@ -132,6 +73,23 @@ function getSafeFallbackShell(): string {
  * allowlist or validation is applied.
  */
 export function getShell(): string {
+	// When the user has overridden the terminal profile in Zoo Code settings,
+	// resolve it and return the actual shell path. This ensures the LLM
+	// system prompt and the execa fallback path use the effective shell,
+	// not just VS Code's default terminal profile (vscode.env.shell).
+	const profileShell = Terminal.getProfileShell()
+	if (profileShell?.shellPath) {
+		// Canonicalize WSL paths so downstream === WSL_EXE_PATH comparisons
+		// (ExecaTerminalProcess.ts) work correctly regardless of path casing
+		// or slash direction. VS Code profile paths come from
+		// resolveProfilePath() which may return non-canonical forms.
+		const normalized = profileShell.shellPath.replace(/\//g, "\\")
+		if (normalized.toLowerCase() === WSL_EXE_PATH.toLowerCase()) {
+			return WSL_EXE_PATH
+		}
+		return profileShell.shellPath
+	}
+
 	let shell: string | null = vscode.env.shell || null
 
 	if (!shell) {
@@ -149,7 +107,8 @@ export function getShell(): string {
 	// Canonicalize WSL paths for downstream === WSL_EXE_PATH comparisons
 	// (ExecaTerminalProcess.ts). VS Code may return varying casing for
 	// wsl.exe depending on how the profile was configured.
-	if (shell.toLowerCase() === WSL_EXE_PATH.toLowerCase()) {
+	const normalizedShell = shell.replace(/\//g, "\\")
+	if (normalizedShell.toLowerCase() === WSL_EXE_PATH.toLowerCase()) {
 		return WSL_EXE_PATH
 	}
 

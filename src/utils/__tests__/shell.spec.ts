@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import * as vscode from "vscode"
 import { userInfo } from "os"
-import { getShell, getWslProfile, WSL_EXE_PATH } from "../shell"
+import { getShell, WSL_EXE_PATH } from "../shell"
+import { BaseTerminal } from "../../integrations/terminal/BaseTerminal"
+import { existsSync } from "fs"
 
 vi.mock("vscode", () => ({
 	workspace: {
@@ -15,6 +17,12 @@ vi.mock("vscode", () => ({
 vi.mock("os", () => ({
 	userInfo: vi.fn(() => ({ shell: null })),
 }))
+
+vi.mock("fs", () => ({
+	existsSync: vi.fn(() => false),
+}))
+
+const mockedExistsSync = existsSync as unknown as ReturnType<typeof vi.fn>
 
 describe("Shell Detection", () => {
 	let originalPlatform: string
@@ -75,6 +83,16 @@ describe("Shell Detection", () => {
 
 		it("canonicalizes differently-cased WSL paths", () => {
 			setVSEnvShell("C:\\Windows\\system32\\WSL.EXE")
+			expect(getShell()).toBe(WSL_EXE_PATH)
+		})
+
+		it("canonicalizes WSL paths with forward slashes", () => {
+			setVSEnvShell("C:/Windows/System32/wsl.exe")
+			expect(getShell()).toBe(WSL_EXE_PATH)
+		})
+
+		it("canonicalizes WSL paths with mixed slashes and case", () => {
+			setVSEnvShell("C:/Windows/system32/WSL.EXE")
 			expect(getShell()).toBe(WSL_EXE_PATH)
 		})
 
@@ -196,69 +214,123 @@ describe("Shell Detection", () => {
 			expect(getShell()).toBe("/opt/homebrew/bin/zsh")
 		})
 	})
-
 	// --------------------------------------------------------------------------
-	// getWslProfile (preserved — needs VS Code config, not vscode.env.shell)
+	// Profile override — Zoo Code terminalProfile setting beats vscode.env.shell
 	// --------------------------------------------------------------------------
-	describe("getWslProfile()", () => {
+	describe("Profile override", () => {
 		beforeEach(() => {
-			Object.defineProperty(process, "platform", { value: "win32" })
+			// Reset profile override to default (undefined) before each test.
+			BaseTerminal.setTerminalProfile(undefined)
+			// Make explicit profile paths resolve (real fs.existsSync would fail on CI).
+			mockedExistsSync.mockReturnValue(true)
 		})
 
-		it("returns null on non-Windows platforms", () => {
-			Object.defineProperty(process, "platform", { value: "darwin" })
-			expect(getWslProfile()).toBeNull()
+		afterEach(() => {
+			BaseTerminal.setTerminalProfile(undefined)
 		})
 
-		it("detects WSL by source field", () => {
-			vscode.workspace.getConfiguration = () =>
-				({
-					get: (key: string) => {
-						if (key === "defaultProfile.windows") return "Ubuntu"
-						if (key === "profiles.windows") return { Ubuntu: { source: "WSL" } }
-						return undefined
-					},
-				}) as any
+		it("returns profile shell when a terminalProfile override is active", () => {
+			// Arrange: set a profile override and mock VS Code config to return
+			// a matching profile with a resolvable path.
+			BaseTerminal.setTerminalProfile("Git Bash")
 
-			const result = getWslProfile()
-			expect(result).not.toBeNull()
-			expect(result!.path).toBe(WSL_EXE_PATH)
-			expect(result!.args).toEqual([])
+			const mockGetConfig = vi.mocked(vscode.workspace.getConfiguration)
+			mockGetConfig.mockImplementation((section?: string) => {
+				if (section === "terminal.integrated.profiles") {
+					return {
+						inspect: (_key: string) => ({
+							defaultValue: {
+								"Git Bash": {
+									path: "C:\\Program Files\\Git\\bin\\bash.exe",
+								},
+							},
+							globalValue: undefined,
+						}),
+						get: vi.fn(),
+					} as any
+				}
+				return { get: vi.fn(), inspect: vi.fn() } as any
+			})
+
+			// Act
+			const result = getShell()
+
+			// Assert: profile shell path returned, NOT vscode.env.shell or any fallback
+			expect(result).toBe("C:\\Program Files\\Git\\bin\\bash.exe")
+			// Verify the mock was actually called
+			expect(mockGetConfig).toHaveBeenCalledWith("terminal.integrated.profiles")
 		})
 
-		it("detects WSL by profile name pattern", () => {
-			vscode.workspace.getConfiguration = () =>
-				({
-					get: (key: string) => {
-						if (key === "defaultProfile.windows") return "Ubuntu WSL"
-						if (key === "profiles.windows") return { "Ubuntu WSL": {} }
-						return undefined
-					},
-				}) as any
+		it("falls through to vscode.env.shell when profile override is unset", () => {
+			// Arrange: no profile override (beforeEach already resets), set vscode.env.shell
+			setVSEnvShell("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
 
-			expect(getWslProfile()).not.toBeNull()
+			// Act
+			const result = getShell()
+
+			// Assert: vscode.env.shell is used (existing behavior, no regression)
+			expect(result).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
 		})
 
-		it("returns null for non-WSL profiles", () => {
-			vscode.workspace.getConfiguration = () =>
-				({
-					get: (key: string) => {
-						if (key === "defaultProfile.windows") return "PowerShell"
-						if (key === "profiles.windows") return { PowerShell: { source: "PowerShell" } }
-						return undefined
-					},
-				}) as any
+		it("falls through to vscode.env.shell when profile is set but has no resolvable path", () => {
+			// Arrange: profile override set to a source-only profile (no path field).
+			BaseTerminal.setTerminalProfile("PowerShell (Source Only)")
 
-			expect(getWslProfile()).toBeNull()
+			const mockGetConfig = vi.mocked(vscode.workspace.getConfiguration)
+			mockGetConfig.mockImplementation((section?: string) => {
+				if (section === "terminal.integrated.profiles") {
+					return {
+						inspect: (_key: string) => ({
+							defaultValue: {
+								"PowerShell (Source Only)": {
+									source: "PowerShell",
+									// No "path" property — this is a source-only profile
+								},
+							},
+							globalValue: undefined,
+						}),
+						get: vi.fn(),
+					} as any
+				}
+				return { get: vi.fn(), inspect: vi.fn() } as any
+			})
+
+			setVSEnvShell("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
+
+			// Act
+			const result = getShell()
+
+			// Assert: falls through to vscode.env.shell because the profile
+			// override couldn't be resolved to a shell path
+			expect(result).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
 		})
 
-		it("returns null when no default profile is set", () => {
-			vscode.workspace.getConfiguration = () =>
-				({
-					get: () => undefined,
-				}) as any
+		it("falls through to vscode.env.shell when profile is not found in VS Code config", () => {
+			// Arrange: profile name set but not present in VS Code config.
+			BaseTerminal.setTerminalProfile("NonExistentProfile")
 
-			expect(getWslProfile()).toBeNull()
+			const mockGetConfig = vi.mocked(vscode.workspace.getConfiguration)
+			mockGetConfig.mockImplementation((section?: string) => {
+				if (section === "terminal.integrated.profiles") {
+					return {
+						inspect: (_key: string) => ({
+							defaultValue: {},
+							globalValue: undefined,
+						}),
+						get: vi.fn(),
+					} as any
+				}
+				return { get: vi.fn(), inspect: vi.fn() } as any
+			})
+
+			setVSEnvShell("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
+
+			// Act
+			const result = getShell()
+
+			// Assert: falls through because the named profile wasn't found
+			expect(result).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
 		})
 	})
+
 })

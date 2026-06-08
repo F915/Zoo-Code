@@ -6,11 +6,15 @@ import type { RooTerminal } from "./types"
 import { BaseTerminal } from "./BaseTerminal"
 import { BaseTerminalProcess } from "./BaseTerminalProcess"
 import { getShell, WSL_EXE_PATH } from "../../utils/shell"
+import { Terminal } from "./Terminal"
 
 // Matches \\wsl$\Distro\... and \\wsl.localhost\Distro\...
 const WSL_UNC_PREFIX = /^\/\/wsl(?:\$|\.localhost)\/([^\/]+)\/?(.*)$/i
 
-async function convertWindowsPathToWsl(windowsPath: string): Promise<string | null> {
+async function convertWindowsPathToWsl(
+	windowsPath: string,
+	profileArgs?: string[],
+): Promise<string | null> {
 	const forward = windowsPath.replace(/\\/g, "/")
 
 	// Already a POSIX/WSL path — no Windows-to-WSL conversion needed.
@@ -35,9 +39,12 @@ async function convertWindowsPathToWsl(windowsPath: string): Promise<string | nu
 		return subPath.startsWith("/") ? subPath : `/${subPath}`
 	}
 
-	// Tier 3: Arbitrary UNC → wslpath fallback
+	// Tier 3: Arbitrary UNC → wslpath fallback.
+	// Pass the configured WSL distro args so wslpath runs in the correct
+	// distro — the system default may have different mount points.
 	try {
-		const { stdout } = await execa(WSL_EXE_PATH, ["wslpath", windowsPath], {
+		const wslpathArgs = [...(profileArgs ?? []), "wslpath", windowsPath]
+		const { stdout } = await execa(WSL_EXE_PATH, wslpathArgs, {
 			timeout: 5_000,
 			stdin: "ignore",
 		})
@@ -62,7 +69,11 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 		this.terminalRef = new WeakRef(terminal)
 
 		this.once("completed", () => {
-			this.terminal.busy = false
+			try {
+				this.terminal.busy = false
+			} catch {
+				// Terminal has been garbage collected — nothing to clean up.
+			}
 		})
 	}
 
@@ -85,20 +96,44 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			const execaShellPath = BaseTerminal.getExecaShellPath()
 			const resolvedShell = execaShellPath || getShell()
 
+			// Resolve the profile shell for env propagation. Even in the execa fallback
+			// path, profile-specific environment variables (locale, PATH, etc.) should be
+			// honored. getShell() already handles the profile shell path; here we need the
+			// env portion of the profile definition.
+			const profileShell = execaShellPath ? undefined : Terminal.getProfileShell()
+
 			// WSL detection only applies when the user has NOT set an explicit execa shell.
 			const isWslShell = execaShellPath ? false : resolvedShell === WSL_EXE_PATH
 
 			if (isWslShell) {
 				// Spawn wsl.exe directly (not through cmd.exe) to avoid nested-quoting issues.
 				// execa(file, args, options) passes args as an array — no shell interpretation.
+				//
+				// WSL detection is two-tier:
+				//   Tier 1 — getShell() via getProfileShell() (authoritative):
+				//     decides whether we enter the WSL path at all
+				//   Tier 2 — profile override args, falling back to VS Code default:
+				//     supplements with user-configured profile args (e.g. distro selection).
+				//     When a Zoo Code terminalProfile override is active, use its shellArgs
+				//     directly. Otherwise fall back to the VS Code default WSL profile args.
+				const profileArgs = profileShell?.shellArgs?.length
+					? profileShell.shellArgs
+					: (Terminal.getConfiguredWslProfileArgs() ?? [])
 				const windowsCwd = this.terminal.getCurrentWorkingDirectory()
-				const wslCwd = await convertWindowsPathToWsl(windowsCwd)
+				const wslCwd = await convertWindowsPathToWsl(windowsCwd, profileArgs)
 
-				const wslArgs = ["--", "bash", "-c", command]
+				const wslArgs: string[] = [...profileArgs]
 
 				if (wslCwd) {
-					wslArgs.unshift("--cd", wslCwd)
+					wslArgs.push("--cd", wslCwd)
+				} else {
+					console.warn(
+						`[ExecaTerminalProcess] Could not convert Windows path to WSL: "${windowsCwd}". ` +
+							`Command will run in WSL home directory instead of expected CWD.`,
+					)
 				}
+
+				wslArgs.push("--", "bash", "-c", command)
 
 				this.subprocess = execa(WSL_EXE_PATH, wslArgs, {
 					cwd: undefined,
@@ -106,6 +141,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 					stdin: "ignore",
 					env: {
 						...process.env,
+						...profileShell?.env,
 						LANG: "en_US.UTF-8",
 						LC_ALL: "en_US.UTF-8",
 					},
@@ -118,6 +154,10 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 					stdin: "ignore",
 					env: {
 						...process.env,
+						// Profile-specific environment variables (e.g. locale, custom PATH).
+						// Already sanitized by getProfileShell() — dangerous keys like
+						// ZDOTDIR, LD_PRELOAD are filtered.
+						...profileShell?.env,
 						LANG: "en_US.UTF-8",
 						LC_ALL: "en_US.UTF-8",
 					},
@@ -147,10 +187,23 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 
 			const rawStream = this.subprocess.iterable({ from: "all", preserveNewlines: true })
 
-			// Wrap the stream to ensure all chunks are strings (execa can return Uint8Array)
+			const decoder = new TextDecoder()
+
+			// Wrap the stream to ensure all chunks are strings.
+			// A single TextDecoder with { stream: true } handles multi-byte UTF-8
+			// characters split across chunk boundaries — a fresh decoder per chunk
+			// would produce U+FFFD replacement characters for partial sequences.
 			const stream = (async function* () {
 				for await (const chunk of rawStream) {
-					yield typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk)
+					yield typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true })
+				}
+				// Flush any remaining bytes buffered in the decoder.
+				// Without this call, an incomplete multi-byte UTF-8
+				// sequence at the very end of the stream would be
+				// silently dropped.
+				const final = decoder.decode()
+				if (final) {
+					yield final
 				}
 			})()
 
@@ -182,7 +235,11 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 					timeoutId = setTimeout(() => {
 						try {
 							this.subprocess?.kill("SIGKILL")
-						} catch (e) {}
+						} catch (e) {
+							console.warn(
+								`[ExecaTerminalProcess#run] kill timeout subprocess error: ${e instanceof Error ? e.message : String(e)}`,
+							)
+						}
 
 						resolve()
 					}, 5_000)
@@ -201,11 +258,49 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 				}
 			}
 
-			this.emit("shell_execution_complete", { exitCode: 0 })
+			// Capture real exit code from the execa subprocess.
+			// execa v9's iterable() does not throw on process failure — the
+			// for-await loop exits cleanly regardless of exit code.  Await the
+			// subprocess promise (already settled by now — the stream has
+			// ended) to get the actual exitCode and signalName.
+			let emitExitCode: number | undefined
+			let emitSignal: string | undefined
+
+			// Always attempt to read the real exit code.  If the subprocess already
+			// settled (stream ended), this gives us the actual result.  If it hasn't
+			// settled yet (abort killed it mid-stream), proceed to the abort signal path.
+			try {
+				const result = await this.subprocess
+				emitExitCode = result.exitCode
+				emitSignal = result.signal
+			} catch (error) {
+				if (error instanceof ExecaError) {
+					emitExitCode = error.exitCode
+					emitSignal = error.signal
+				} else {
+					// Unexpected error — re-throw to outer catch
+					throw error
+				}
+			}
+
+			if (this.aborted) {
+				// Subprocess was signalled but may have already exited normally
+				// before the abort flag was set.  Preserve the real exit code and
+				// signal if available.  Only default to SIGKILL when the process
+				// was killed mid-flight (no exit code available).
+				if (emitSignal === undefined && emitExitCode === undefined) {
+					emitSignal = "SIGKILL"
+				}
+			}
+
+			this.emit("shell_execution_complete", {
+				exitCode: emitExitCode,
+				signalName: emitSignal,
+			})
 		} catch (error) {
 			if (error instanceof ExecaError) {
 				console.error(`[ExecaTerminalProcess#run] shell execution error: ${error.message}`)
-				this.emit("shell_execution_complete", { exitCode: error.exitCode ?? 0, signalName: error.signal })
+				this.emit("shell_execution_complete", { exitCode: error.exitCode, signalName: error.signal })
 			} else {
 				console.error(
 					`[ExecaTerminalProcess#run] shell execution error: ${error instanceof Error ? error.message : String(error)}`,
@@ -216,7 +311,13 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			this.subprocess = undefined
 		}
 
-		this.terminal.setActiveStream(undefined)
+		try {
+			this.terminal.setActiveStream(undefined)
+			this.terminal.running = false
+		} catch {
+			// Terminal has been garbage collected — nothing to clean up.
+		}
+
 		this.emitRemainingBufferIfListening()
 		this.stopHotTimer()
 		this.emit("completed", this.fullOutput)
@@ -249,7 +350,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			// Kill the stored PID (which should be the actual command after our update)
 			if (this.pid) {
 				try {
-					process.kill(this.pid, "SIGKILL")
+					process.kill(this.pid, "SIGTERM")
 				} catch (e) {
 					console.warn(
 						`[ExecaTerminalProcess#abort] Failed to kill process ${this.pid}: ${e instanceof Error ? e.message : String(e)}`,
@@ -274,10 +375,10 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 
 					for (const pid of pids) {
 						try {
-							process.kill(pid, "SIGKILL")
+							process.kill(pid, "SIGTERM")
 						} catch (e) {
 							console.warn(
-								`[ExecaTerminalProcess#abort] Failed to send SIGKILL to child PID ${pid}: ${e instanceof Error ? e.message : String(e)}`,
+								`[ExecaTerminalProcess#abort] Failed to send SIGTERM to child PID ${pid}: ${e instanceof Error ? e.message : String(e)}`,
 							)
 						}
 					}

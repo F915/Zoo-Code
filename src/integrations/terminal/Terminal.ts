@@ -167,9 +167,12 @@ export class Terminal extends BaseTerminal {
 			// Reuse the shell-integration-ready promise started in the
 			// constructor — the wait has already been running since
 			// terminal creation, so by now it may already be resolved.
-			this.shellIntegrationReady.then(() => {
-				process.run(command)
-			})
+			this.shellIntegrationReady
+				.then(() => process.run(command))
+				.catch((error) => {
+					console.error(`[Terminal ${this.id}] process.run error:`, error)
+					reject(error)
+				})
 		})
 
 		return mergePromise(process, promise)
@@ -389,6 +392,64 @@ export class Terminal extends BaseTerminal {
 	}
 
 	/**
+	 * Returns the args from the VS Code-configured default WSL profile, or
+	 * undefined if the default profile is not WSL.
+	 *
+	 * Reads ONLY trusted settings scopes (defaultValue + globalValue) —
+	 * workspace settings are intentionally excluded for security.
+	 *
+	 * WSL detection checks `source === "WSL"` (case-insensitive) and falls
+	 * back to matching the profile name against /\bwsl\b/i.
+	 *
+	 * @returns The WSL profile args array (may be empty if no args), or
+	 *   undefined if the default profile is not WSL or not configured.
+	 */
+	public static getConfiguredWslProfileArgs(
+		platform: NodeJS.Platform = process.platform,
+	): string[] | undefined {
+		if (platform !== "win32") {
+			return undefined
+		}
+
+		const defaultProfileName = Terminal.getConfiguredDefaultProfileName(platform)
+
+		if (!defaultProfileName) {
+			return undefined
+		}
+
+		const profiles = Terminal.getConfiguredProfiles(platform)
+		const profile = profiles[defaultProfileName] as
+			| { path?: string | string[]; args?: string | string[]; source?: string }
+			| null
+			| undefined
+
+		if (!profile) {
+			return undefined
+		}
+
+		// Detect WSL by source field (case-insensitive, same
+		// .toLowerCase() pattern as isActiveShellPowerShell) or
+		// by profile name containing "wsl".
+		const isWsl =
+			(typeof profile.source === "string" && profile.source.toLowerCase() === "wsl") ||
+			/\bwsl\b/i.test(defaultProfileName)
+
+		if (!isWsl) {
+			return undefined
+		}
+
+		// Normalize args — same filtering as getProfileShell():
+		// string → [string], arrays filtered to typeof string entries only.
+		const args = Array.isArray(profile.args)
+			? profile.args.filter((arg): arg is string => typeof arg === "string")
+			: typeof profile.args === "string"
+				? [profile.args]
+				: []
+
+		return args
+	}
+
+	/**
 	 * Returns true when the resolved shell path is cmd.exe. cmd.exe cannot emit
 	 * the OSC 633;C sequence (VS Code issue #164646, closed as not planned), so
 	 * shell integration will never work for it — exclude it from the picker.
@@ -440,10 +501,6 @@ export class Terminal extends BaseTerminal {
 	}
 
 	public static isActiveShellPowerShell(platform: NodeJS.Platform = process.platform): boolean {
-		if (platform !== "win32") {
-			return false
-		}
-
 		const profileOverride = Terminal.getTerminalProfile()
 
 		if (profileOverride) {
@@ -470,7 +527,21 @@ export class Terminal extends BaseTerminal {
 			return Terminal.isPowerShell(resolved)
 		}
 
-		return typeof profile.source === "string" && profile.source.toLowerCase().includes("powershell")
+		// Source-only profiles (e.g. VS Code built-in "PowerShell"):
+		// search PATH instead of trusting source string. This avoids
+		// false positives when the profile's source is "PowerShell" but
+		// pwsh is not actually installed (macOS/Linux without pwsh).
+		if (typeof profile.source === "string") {
+			const pathFromSource = Terminal.resolveProfilePath(
+				platform === "win32" ? "pwsh.exe" : "pwsh",
+				platform,
+			)
+			if (pathFromSource) {
+				return Terminal.isPowerShell(pathFromSource)
+			}
+		}
+
+		return false
 	}
 
 	public static isActiveShellFish(platform: NodeJS.Platform = process.platform): boolean {

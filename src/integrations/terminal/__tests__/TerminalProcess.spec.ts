@@ -385,6 +385,9 @@ describe("TerminalProcess", () => {
 				expect(noSiDetails!.commandSubmitted).toBe(true)
 				expect(noSiDetails!.message).toContain("stream did not start")
 				expect(output).toContain("no shell integration")
+				// F4 fix: isHot must be false after stream timeout -- otherwise
+				// getEnvironmentDetails' pWaitFor waits full 5s timeout.
+				expect(siProcess.isHot).toBe(false)
 			})
 		})
 	})
@@ -615,6 +618,49 @@ describe("TerminalProcess", () => {
 
 			expect(terminalProcess["fullOutput"]).toBe("")
 			expect(terminalProcess["lastRetrievedIndex"]).toBe(0)
+		})
+	})
+
+	describe("C marker search regression (F3)", () => {
+		// F3: When the first data chunk does not contain the \x1b]633;C start
+		// marker, the gate `this.fullOutput === ""` permanently skips marker
+		// searching. The fix uses a dedicated boolean flag to continue searching
+		// until the C marker is actually found.
+
+		it("finds C marker in a subsequent chunk when first chunk has no marker", async () => {
+			const siTerminal = {
+				shellIntegration: { executeCommand: vi.fn().mockReturnValue({ read: vi.fn() }) },
+				sendText: vi.fn(),
+				name: "SI Terminal",
+				processId: Promise.resolve(789),
+				creationOptions: {},
+				exitStatus: undefined,
+				state: { isInteractedWith: true },
+				dispose: vi.fn(),
+				hide: vi.fn(),
+				show: vi.fn(),
+			} as unknown as vscode.Terminal
+
+			const terminalInfo = new Terminal(5, siTerminal, "./")
+			const process = new TestTerminalProcess(terminalInfo)
+
+			// Mock stream: first chunk is plain text (no C marker),
+			// second chunk is the C marker followed by real output.
+			const mockStream = (async function* () {
+				yield "preamble output\n"
+				yield "\x1b]633;C\x07real output\n"
+				process.emit("shell_execution_complete", { exitCode: 0 })
+			})()
+
+			const runPromise = process.run("test-cmd")
+			process.emit("stream_available", mockStream)
+			await runPromise
+
+			// F3 bug: fullOutput would be "\x1b]633;C\x07real output\npreamble output\n"
+			// because C marker was never stripped from the second chunk.
+			// After fix: fullOutput should not contain the C marker escape sequence.
+			expect(process["fullOutput"]).not.toContain("\x1b]633;C")
+			expect(process["fullOutput"]).toContain("real output")
 		})
 	})
 

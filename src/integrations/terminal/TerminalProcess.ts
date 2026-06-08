@@ -17,21 +17,38 @@ export class TerminalProcess extends BaseTerminalProcess {
 	// while a previous loop is still re-sending Ctrl+C.
 	private aborting = false
 
+	// Tracks whether we've found and stripped the VS Code shell integration
+	// C (command start) marker from the output stream. We keep searching each
+	// chunk until the marker is found — the marker may arrive in a later chunk
+	// than the first data payload.
+	private commandOutputStarted = false
+
 	constructor(terminal: Terminal) {
 		super()
 
 		this.terminalRef = new WeakRef(terminal)
 
 		this.once("completed", () => {
-			this.terminal.busy = false
+			const terminal = this.terminalRef.deref()
+			if (terminal) {
+				terminal.busy = false
+			}
 		})
 
 		this.once("no_shell_integration", () => {
 			this.emit("completed", "<no shell integration>")
-			this.terminal.busy = false
-			this.terminal.activeShellExecution = undefined
-			this.terminal.setActiveStream(undefined)
-			this.continue()
+			const terminal = this.terminalRef.deref()
+			if (terminal) {
+				terminal.busy = false
+				terminal.activeShellExecution = undefined
+				terminal.setActiveStream(undefined)
+			}
+			this.stopHotTimer()
+			try {
+				this.continue()
+			} catch {
+				// Terminal has been garbage collected — nothing to clean up.
+			}
 		})
 	}
 
@@ -152,6 +169,14 @@ export class TerminalProcess extends BaseTerminalProcess {
 		try {
 			stream = await streamAvailable
 		} catch (error) {
+			// The no_shell_integration handler in the constructor may have
+			// already emitted completed + continue and cleared isListening
+			// when the stream timeout fired.  Guard against double-emission.
+			if (!this.isListening) {
+					this.stopHotTimer()
+					return
+			}
+
 			// Stream timeout or other error occurred
 			console.error("[Terminal Process] Stream error:", error.message)
 
@@ -161,7 +186,15 @@ export class TerminalProcess extends BaseTerminalProcess {
 				"<VSCE shell integration stream did not start: terminal output and command execution status is unknown>",
 			)
 
-			this.terminal.busy = false
+			try {
+				this.terminal.busy = false
+			} catch {
+				// Terminal has been garbage collected — nothing to clean up.
+			}
+
+			// Ensure isHot is cleared so the task loop doesn't stall waiting
+			// for a process that will never produce more output.
+			this.stopHotTimer()
 
 			// Emit continue event to allow execution to proceed
 			this.emit("continue")
@@ -180,11 +213,12 @@ export class TerminalProcess extends BaseTerminalProcess {
 
 		// Process stream data
 		for await (let data of stream) {
-			const match = this.fullOutput === "" ? this.matchAfterVsceStartMarkers(data) : undefined
+			const match = !this.commandOutputStarted ? this.matchAfterVsceStartMarkers(data) : undefined
 
 			if (match !== undefined) {
 				data = match
 				this.emit("line", "") // Trigger UI to proceed
+				this.commandOutputStarted = true
 			}
 
 			// Accumulate data without filtering.
@@ -207,11 +241,40 @@ export class TerminalProcess extends BaseTerminalProcess {
 		}
 
 		// Set streamClosed immediately after stream ends.
-		this.terminal.setActiveStream(undefined)
+		try {
+			this.terminal.setActiveStream(undefined)
+		} catch {
+			// Terminal has been garbage collected — nothing to clean up.
+		}
 
 		// Wait for shell execution to complete.
-		await shellExecutionComplete
-		this.terminal.activeShellExecution = undefined
+		// Safety-net timeout: if VS Code never fires onDidEndTerminalShellExecution
+		// (e.g. D marker lost per VSCode bug# 237208), resolve after the configured
+		// shell-integration timeout so the task loop does not hang forever.
+		let completionTimeoutId: NodeJS.Timeout | undefined
+		const completionTimeout = new Promise<never>((_, reject) => {
+			completionTimeoutId = setTimeout(
+				() => reject(new Error(`Shell execution completion event did not fire within ${Terminal.getShellIntegrationTimeout() / 1000}s`)),
+				Terminal.getShellIntegrationTimeout(),
+			)
+		})
+		try {
+			await Promise.race([shellExecutionComplete, completionTimeout])
+		} catch {
+			console.warn("[TerminalProcess] shell_execution_complete event did not fire within timeout")
+		} finally {
+			// Clear the timeout so it doesn't fire late and produce an
+			// unhandled Promise rejection warning when shell_execution_complete
+			// wins the race.
+			if (completionTimeoutId) {
+				clearTimeout(completionTimeoutId)
+			}
+		}
+		try {
+			this.terminal.activeShellExecution = undefined
+		} catch {
+			// Terminal has been garbage collected.
+		}
 
 		this.isHot = false
 
@@ -269,6 +332,7 @@ export class TerminalProcess extends BaseTerminalProcess {
 
 	public override abort() {
 		if (!this.isListening) {
+			this.stopHotTimer()
 			return
 		}
 
@@ -280,7 +344,14 @@ export class TerminalProcess extends BaseTerminalProcess {
 		// check + set below are atomic (no await between them).
 		if (!this.aborting) {
 			this.aborting = true
-			this.terminal.terminal.sendText("\x03")
+			try {
+				this.terminal.terminal.sendText("\x03")
+			} catch {
+				// Terminal may have been disposed — nothing to abort.
+				this.aborting = false
+				this.stopHotTimer()
+				return
+			}
 			void this.retryAbort()
 				.finally(() => {
 					this.aborting = false
@@ -307,7 +378,8 @@ export class TerminalProcess extends BaseTerminalProcess {
 			// either one being false is a sufficient stop signal — we deliberately check
 			// both rather than collapsing them into one.
 			if (!this.isListening) {
-				return
+					this.stopHotTimer()
+					return
 			}
 
 			const terminal = this.terminalRef.deref()

@@ -141,7 +141,11 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 				task.supersedePendingAsk()
 
 				if (canRetryShellIntegrationError(error)) {
-					// Silent retry via execa — shell startup race, command was not submitted.
+					// Shell integration not available — command was not submitted to the
+					// VS Code terminal. Show warning so the user knows the terminal mode
+					// changed, then fall back to execa.
+					await task.say("shell_integration_warning")
+
 					const status: CommandExecutionStatus = { executionId, status: "fallback" }
 					provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
 
@@ -356,7 +360,10 @@ export async function executeCommandInTerminal(
 					process.continue()
 				}
 			} catch (_error) {
-				// Silently handle ask errors (e.g., "Current ask promise was ignored")
+				// Silently handle ask errors (e.g., "Current ask promise was ignored").
+				// Reset the flag so a future ask can be triggered if the command is
+				// still producing output.
+				hasAskedForCommandOutput = false
 			}
 		},
 		onCompleted: async (output: string | undefined) => {
@@ -493,7 +500,10 @@ export async function executeCommandInTerminal(
 	// This ensures persistedResult is set before we try to use it, fixing the race
 	// condition where exitDetails is set (sync) before the async onCompleted finishes.
 	if (exitDetails && onCompletedPromise) {
-		await onCompletedPromise
+		await Promise.race([
+			onCompletedPromise,
+			new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+		])
 	}
 
 	if (message) {

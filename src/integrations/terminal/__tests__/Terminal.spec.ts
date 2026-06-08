@@ -96,7 +96,7 @@ describe("Terminal", () => {
 		it("does not stall when shellIntegration is pre-set on the terminal", async () => {
 			vi.useFakeTimers()
 
-			const ready = makeTerminal({ shellIntegration: { executeCommand: vi.fn() } as any })
+			const ready = makeTerminal({ shellIntegration: { executeCommand: vi.fn().mockReturnValue({ read: vi.fn().mockReturnValue((async function* () {})()) }) } as any })
 			const spy = vi.spyOn(vscode.window, "createTerminal" as any).mockReturnValue(ready)
 
 			const terminal = new Terminal(5, undefined, "/test")
@@ -109,7 +109,9 @@ describe("Terminal", () => {
 				onNoShellIntegration: vi.fn(),
 			})
 
-			await vi.advanceTimersByTimeAsync(15_001)
+			await vi.advanceTimersByTimeAsync(0)
+			terminal.shellExecutionComplete({ exitCode: 0 })
+			await vi.advanceTimersByTimeAsync(0)
 			await expect(result).resolves.toBeUndefined()
 
 			vi.useRealTimers()
@@ -130,7 +132,7 @@ describe("Terminal", () => {
 			new Terminal(6, undefined, "/test")
 
 			expect(shellIntegrationCbs).toHaveLength(1)
-			;(mterm as any).shellIntegration = { executeCommand: vi.fn() }
+			;(mterm as any).shellIntegration = { executeCommand: vi.fn().mockReturnValue({ read: vi.fn().mockReturnValue((async function* () {})()) }) }
 			shellIntegrationCbs[0]({ terminal: mterm })
 
 			const t = new Terminal(7, mterm, "/test")
@@ -142,7 +144,9 @@ describe("Terminal", () => {
 				onNoShellIntegration: vi.fn(),
 			})
 
-			await vi.advanceTimersByTimeAsync(15_001)
+			await vi.advanceTimersByTimeAsync(0)
+			t.shellExecutionComplete({ exitCode: 0 })
+			await vi.advanceTimersByTimeAsync(0)
 			await expect(promise).resolves.toBeUndefined()
 
 			vi.useRealTimers()
@@ -195,7 +199,7 @@ describe("Terminal", () => {
 			const spy = vi.spyOn(vscode.window, "createTerminal" as any).mockReturnValue(mterm)
 
 			new Terminal(10, undefined, "/test")
-			;(mterm as any).shellIntegration = { executeCommand: vi.fn() }
+			;(mterm as any).shellIntegration = { executeCommand: vi.fn().mockReturnValue({ read: vi.fn().mockReturnValue((async function* () {})()) }) }
 			shellIntegrationCbs[0]({ terminal: mterm })
 
 			await vi.advanceTimersByTimeAsync(15_001)
@@ -253,7 +257,7 @@ describe("Terminal", () => {
 		it("proceeds without blocking when shell integration was ready at construction", async () => {
 			vi.useFakeTimers()
 
-			const ready = makeTerminal({ shellIntegration: { executeCommand: vi.fn() } as any })
+			const ready = makeTerminal({ shellIntegration: { executeCommand: vi.fn().mockReturnValue({ read: vi.fn().mockReturnValue((async function* () {})()) }) } as any })
 			const spy = vi.spyOn(vscode.window, "createTerminal" as any).mockReturnValue(ready)
 
 			const terminal = new Terminal(14, undefined, "/test")
@@ -265,7 +269,9 @@ describe("Terminal", () => {
 				onNoShellIntegration: vi.fn(),
 			})
 
-			await vi.advanceTimersByTimeAsync(15_001)
+			await vi.advanceTimersByTimeAsync(0)
+			terminal.shellExecutionComplete({ exitCode: 0 })
+			await vi.advanceTimersByTimeAsync(0)
 			await expect(result).resolves.toBeUndefined()
 
 			vi.useRealTimers()
