@@ -145,9 +145,14 @@ describe("ExecaTerminalProcess", () => {
 			await terminalProcess.run('echo "hello wsl"')
 
 			const execaMock = vitest.mocked(execa)
+			const wslArgs = execaMock.mock.calls[0][1] as string[]
+			expect(wslArgs.slice(0, -1)).toEqual(["-d", "Ubuntu-22.04", "--cd", "/mnt/c/test/cwd", "--", "bash", "-c"])
+			expect(wslArgs[wslArgs.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo "hello wsl"; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
+			)
 			expect(execaMock).toHaveBeenCalledWith(
 				WSL_EXE_PATH,
-				["-d", "Ubuntu-22.04", "--cd", "/mnt/c/test/cwd", "--", "bash", "-c", 'echo "hello wsl"'],
+				expect.any(Array),
 				expect.objectContaining({
 					cwd: undefined,
 					all: true,
@@ -186,9 +191,14 @@ describe("ExecaTerminalProcess", () => {
 			await terminalProcess.run("echo test")
 
 			const execaMock = vitest.mocked(execa)
+			const wslArgs = execaMock.mock.calls[0][1] as string[]
+			expect(wslArgs.slice(0, -1)).toEqual(["--cd", "/home/project", "--", "bash", "-c"])
+			expect(wslArgs[wslArgs.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo test; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
+			)
 			expect(execaMock).toHaveBeenCalledWith(
 				WSL_EXE_PATH,
-				["--cd", "/home/project", "--", "bash", "-c", "echo test"],
+				expect.any(Array),
 				expect.any(Object),
 			)
 		})
@@ -229,10 +239,15 @@ describe("ExecaTerminalProcess", () => {
 				["wslpath", "\\\\fileserver\\share\\project"],
 				expect.objectContaining({ timeout: expect.any(Number) }),
 			)
+			const wslArgsRun = execaMock.mock.calls[1][1] as string[]
+			expect(wslArgsRun.slice(0, -1)).toEqual(["--cd", "/mnt/share/project", "--", "bash", "-c"])
+			expect(wslArgsRun[wslArgsRun.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo test; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
+			)
 			expect(execaMock).toHaveBeenNthCalledWith(
 				2,
 				WSL_EXE_PATH,
-				["--cd", "/mnt/share/project", "--", "bash", "-c", "echo test"],
+				expect.any(Array),
 				expect.any(Object),
 			)
 		})
@@ -260,10 +275,15 @@ describe("ExecaTerminalProcess", () => {
 			await terminalProcess.run("echo test")
 
 			const execaMock = vitest.mocked(execa)
+			const wslArgs = execaMock.mock.calls[1][1] as string[]
+			expect(wslArgs.slice(0, -1)).toEqual(["--", "bash", "-c"])
+			expect(wslArgs[wslArgs.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo test; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
+			)
 			expect(execaMock).toHaveBeenNthCalledWith(
 				2,
 				WSL_EXE_PATH,
-				["--", "bash", "-c", "echo test"],
+				expect.any(Array),
 				expect.any(Object),
 			)
 		})
@@ -279,8 +299,13 @@ describe("ExecaTerminalProcess", () => {
 			const execaMock = vitest.mocked(execa)
 			expect(execaMock).toHaveBeenCalledWith(
 				WSL_EXE_PATH,
-				["--cd", "/mnt/c/test/cwd", "--", "bash", "-c", "echo test"],
+				expect.any(Array),
 				expect.any(Object),
+			)
+			const wslArgs = execaMock.mock.calls[0][1] as string[]
+			expect(wslArgs.slice(0, -1)).toEqual(["--cd", "/mnt/c/test/cwd", "--", "bash", "-c"])
+			expect(wslArgs[wslArgs.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo test; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
 			)
 		})
 
@@ -295,8 +320,13 @@ describe("ExecaTerminalProcess", () => {
 			const execaMock = vitest.mocked(execa)
 			expect(execaMock).toHaveBeenCalledWith(
 				WSL_EXE_PATH,
-				["-d", "Ubuntu-22.04", "--cd", "/mnt/c/test/cwd", "--", "bash", "-c", "echo test"],
+				expect.any(Array),
 				expect.any(Object),
+			)
+			const wslArgs = execaMock.mock.calls[0][1] as string[]
+			expect(wslArgs.slice(0, -1)).toEqual(["-d", "Ubuntu-22.04", "--cd", "/mnt/c/test/cwd", "--", "bash", "-c"])
+			expect(wslArgs[wslArgs.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo test; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
 			)
 		})
 
@@ -348,8 +378,13 @@ describe("ExecaTerminalProcess", () => {
 			expect(execa).toHaveBeenCalledTimes(1)
 			expect(execa).toHaveBeenCalledWith(
 				WSL_EXE_PATH,
-				["--cd", "/mnt/share/project", "--", "bash", "-c", "echo second"],
+				expect.any(Array),
 				expect.any(Object),
+			)
+			const wslArgs = vitest.mocked(execa).mock.calls[0][1] as string[]
+			expect(wslArgs.slice(0, -1)).toEqual(["--cd", "/mnt/share/project", "--", "bash", "-c"])
+			expect(wslArgs[wslArgs.length - 1]).toMatch(
+				/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo second; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
 			)
 		})
 
@@ -478,8 +513,13 @@ describe("ExecaTerminalProcess", () => {
 		expect(execaMock).toHaveBeenNthCalledWith(
 			2,
 			WSL_EXE_PATH,
-			["-d", "Debian", "--cd", "/home/debian/project", "--", "bash", "-c", "echo second"],
+			expect.any(Array),
 			expect.any(Object),
+		)
+		const wslArgs = execaMock.mock.calls[1][1] as string[]
+		expect(wslArgs.slice(0, -1)).toEqual(["-d", "Debian", "--cd", "/home/debian/project", "--", "bash", "-c"])
+		expect(wslArgs[wslArgs.length - 1]).toMatch(
+			/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo second; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
 		)
 	})
 
@@ -530,8 +570,35 @@ describe("ExecaTerminalProcess", () => {
 		expect(execa).toHaveBeenCalledTimes(1)
 		expect(execa).toHaveBeenCalledWith(
 			WSL_EXE_PATH,
-			["-d", "Ubuntu-22.04", "--cd", "/home/ubuntu/project", "--", "bash", "-c", "echo second"],
+			expect.any(Array),
 			expect.any(Object),
+		)
+		const wslArgs = vitest.mocked(execa).mock.calls[0][1] as string[]
+		expect(wslArgs.slice(0, -1)).toEqual(["-d", "Ubuntu-22.04", "--cd", "/home/ubuntu/project", "--", "bash", "-c"])
+		expect(wslArgs[wslArgs.length - 1]).toMatch(
+			/^echo \$\$ > '\/tmp\/zoo-cmd-.*\.pid'; echo second; rm -f '\/tmp\/zoo-cmd-.*\.pid'$/,
+		)
+	})
+
+	it("should wrap WSL command with PID marker file recording", async () => {
+		vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+		BaseTerminal.setExecaShellPath(undefined)
+		vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("C:/test/cwd")
+		vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue([])
+
+		vitest.mocked(execa).mockClear()
+		await terminalProcess.run("echo hello")
+
+		const calls = vitest.mocked(execa).mock.calls
+		expect(calls.length).toBe(1)
+
+		const wslArgs = calls[0][1] as string[]
+		const bashFlagIndex = wslArgs.indexOf("-c")
+		expect(bashFlagIndex).toBeGreaterThan(-1)
+		const wrappedCommand = wslArgs[bashFlagIndex + 1]
+
+		expect(wrappedCommand).toMatch(
+			/^echo \$\$ > '\/tmp\/zoo-cmd-\d{13}-[a-z0-9]{6}\.pid'; echo hello; rm -f '\/tmp\/zoo-cmd-\d{13}-[a-z0-9]{6}\.pid'$/,
 		)
 	})
 
@@ -561,6 +628,98 @@ describe("ExecaTerminalProcess", () => {
 			await new Promise((r) => setTimeout(r, 0))
 
 			expect(psTreeMock).not.toHaveBeenCalled()
+			killSpy.mockRestore()
+		})
+
+		it("should send SIGKILL to process group from inside WSL on abort", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("C:/test/cwd")
+			vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue([])
+
+			// Override first execa call to return a hanging subprocess.
+			// mockKill releases the iterable so the for-await loop in run()
+			// exits when abort() calls subprocess.kill("SIGKILL"), mirroring
+			// real execa behaviour where killing the process closes stdout.
+			let releaseIterable: () => void
+			const mockKill = vitest.fn(() => {
+				releaseIterable?.()
+			})
+			vitest
+				.mocked(execa)
+				.mockReset()
+				.mockReturnValueOnce({
+					pid: mockPid,
+					iterable: (_opts: any) =>
+						(async function* () {
+							await new Promise<void>((resolve) => {
+								releaseIterable = resolve
+							})
+						})(),
+					kill: mockKill,
+					then: (resolve: (v: any) => void) => {
+						resolve({ exitCode: undefined, signal: "SIGKILL" })
+						return { catch: () => {} }
+					},
+					catch: () => ({ exitCode: undefined, signal: "SIGKILL" }),
+				} as any)
+
+			const runPromise = terminalProcess.run("sleep 999")
+			await new Promise((r) => setTimeout(r, 50))
+
+			// Restore mock for internal kill call
+			vitest.mocked(execa).mockReset()
+			vitest.mocked(execa).mockReturnValueOnce({
+				pid: mockPid + 100,
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield ""
+					})(),
+				kill: vitest.fn(),
+				then: (resolve: (v: any) => void) => {
+					resolve({ exitCode: 0, signal: undefined })
+					return { catch: () => {} }
+				},
+				catch: () => ({ exitCode: 0, signal: undefined }),
+			} as any)
+
+			const killSpy = vitest.spyOn(process, "kill").mockImplementation(() => true)
+			terminalProcess.abort()
+			await runPromise.catch(() => {})
+
+			const killCalls = vitest.mocked(execa).mock.calls
+			expect(killCalls.length).toBe(1)
+
+			const [file, args] = killCalls[0]
+			expect(file).toBe(WSL_EXE_PATH)
+
+			const wslArgs = args as string[]
+			const bashFlagIndex = wslArgs.indexOf("-c")
+			expect(bashFlagIndex).toBeGreaterThan(-1)
+			const killCmd = wslArgs[bashFlagIndex + 1] as string
+
+			expect(killCmd).toContain("kill -9 -$PID")
+			expect(killCmd).toContain("rm -f '/tmp/zoo-cmd-")
+
+			killSpy.mockRestore()
+		})
+
+		it("should not crash when WSL marker file is missing on abort", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("C:/test/cwd")
+			vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue([])
+
+			await terminalProcess.run("echo test")
+
+			// Simulate marker was already cleaned up (normal exit rm -f)
+			;(terminalProcess as any).wslCommandMarkerFile = undefined
+
+			const killSpy = vitest.spyOn(process, "kill").mockImplementation(() => true)
+			terminalProcess.abort()
+			await new Promise((r) => setTimeout(r, 0))
+
+			// Guard clause should skip internal kill; fallback still fires
 			killSpy.mockRestore()
 		})
 	})

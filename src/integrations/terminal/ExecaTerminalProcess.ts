@@ -14,6 +14,14 @@ const WSL_UNC_PREFIX = /^\/\/wsl(?:\$|\.localhost)\/([^\/]+)\/?(.*)$/i
 /** Timeout for wsl.exe wslpath calls — path conversion should be near-instant. */
 const WSLPATH_TIMEOUT_MS = 5_000
 
+/** Timeout for the WSL internal kill command in abort().
+ *  The kill itself is near-instant (~50 ms) when the WSL VM is
+ *  responsive — the command runs inside an already-running distro.
+ *  This timeout exists only as a safety net for edge cases where
+ *  the VM is hung. Fire-and-forget: subprocess.kill() is the
+ *  fallback regardless. */
+const WSL_KILL_TIMEOUT_MS = 3_000
+
 /** Cache of Windows→WSL path conversions, keyed by (path, profileArgs).
  *  Profile args (e.g. `-d Ubuntu-22.04`) are included in the composite key
  *  so switching distros mid-session does not return a stale cached path from
@@ -92,6 +100,13 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 	private pidUpdatePromise?: Promise<void>
 	private isWslShell = false
 
+	/** PID marker file path — written in run(), read in abort() to send
+	 *  SIGKILL to the exact process group from inside WSL. */
+	private wslCommandMarkerFile?: string
+
+	/** Cached profile args (distro selection, etc.) for the abort() kill call. */
+	private wslProfileArgs?: string[]
+
 	constructor(terminal: RooTerminal) {
 		super()
 
@@ -162,7 +177,18 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 					)
 				}
 
-				wslArgs.push("--", "bash", "-c", command)
+				// Generate a unique PID marker file for abort() to
+				// send SIGKILL to the exact process group from inside WSL.
+				// $$ = the bash process PID (process group leader).
+				// Trailing rm -f cleans up on normal exit; abort path
+				// cleans up via its own kill command.
+				const markerId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+				const markerFile = `/tmp/zoo-cmd-${markerId}.pid`
+				this.wslCommandMarkerFile = markerFile
+				this.wslProfileArgs = profileArgs
+
+				const wrappedCommand = `echo $$ > '${markerFile}'; ${command}; rm -f '${markerFile}'`
+				wslArgs.push("--", "bash", "-c", wrappedCommand)
 
 				this.subprocess = execa(WSL_EXE_PATH, wslArgs, {
 					cwd: undefined,
@@ -195,9 +221,10 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 
 			this.pid = this.subprocess.pid
 
-			// When using shell: true, the PID is for the shell, not the actual command
-			// Find the actual command PID after a small delay
-			if (this.pid) {
+			// When using shell: true, the PID is for the shell, not the actual command.
+			// Find the actual command PID after a small delay. Skip under WSL — the
+			// process tree inside the Linux VM is invisible to Windows psTree.
+			if (this.pid && !this.isWslShell) {
 				this.pidUpdatePromise = new Promise<void>((resolve) => {
 					setTimeout(() => {
 						psTree(this.pid!, (err, children) => {
@@ -254,6 +281,12 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 
 				this.startHotTimer(line)
 			}
+
+			// Clear marker state — the WSL-side rm -f already ran (normal
+			// exit) or the abort path consumed it. Leaving it set would cause
+			// a wasted wsl.exe spawn on any post-completion abort() call.
+			this.wslCommandMarkerFile = undefined
+			this.wslProfileArgs = undefined
 
 			if (this.aborted) {
 				let timeoutId: NodeJS.Timeout | undefined
@@ -363,6 +396,35 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 	public override abort() {
 		this.aborted = true
 
+		// When running under WSL, killing wsl.exe does not guarantee
+		// the Linux process terminates — wslhost.exe may take over
+		// the session (WSL technical docs).  Send SIGKILL directly
+		// from inside WSL to the process group identified by the
+		// PID marker file.  Fire-and-forget: subprocess.kill() below
+		// is the fallback.
+		if (this.isWslShell && this.wslCommandMarkerFile) {
+			const profileArgs = this.wslProfileArgs ?? []
+			const markerFile = this.wslCommandMarkerFile
+
+			// Single wsl.exe call: read PID → kill process group → clean up.
+			// kill -9 -$PID (negative PID = process group) ensures child
+			// processes are also terminated.
+			const killCmd =
+				`PID=$(cat '${markerFile}' 2>/dev/null) && ` +
+				`[ -n "$PID" ] && kill -9 -$PID 2>/dev/null; ` +
+				`rm -f '${markerFile}'`
+
+			execa(WSL_EXE_PATH, [...profileArgs, "--", "bash", "-c", killCmd], {
+				timeout: WSL_KILL_TIMEOUT_MS,
+				stdin: "ignore",
+			}).catch((e) => {
+				// Fire-and-forget — subprocess.kill() is the fallback.
+				console.warn(
+					`[ExecaTerminalProcess#abort] WSL internal kill failed: ${e instanceof Error ? e.message : String(e)}`,
+				)
+			})
+		}
+
 		// Function to perform the kill operations
 		const performKill = () => {
 			// Try to kill using the subprocess object
@@ -395,12 +457,10 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			performKill()
 		}
 
-		// When running under WSL, the actual bash process and its children
-		// live inside the WSL Linux VM and are invisible to Windows psTree.
-		// The only effective termination mechanism is subprocess.kill()
-		// (TerminateProcess on wsl.exe), which closes the pty and sends
-		// SIGHUP to the inner bash session. Skip the psTree tree-walk —
-		// it provides a false sense of security on no-op child process kills.
+		// psTree walks the Windows process tree, which cannot see
+		// Linux processes inside the WSL VM.  Process termination
+		// for WSL is handled above via kill -9 -$PID from inside
+		// WSL, with subprocess.kill() as fallback.
 		if (this.pid && !this.isWslShell) {
 			// Also check for any child processes
 			psTree(this.pid, async (err, children) => {
