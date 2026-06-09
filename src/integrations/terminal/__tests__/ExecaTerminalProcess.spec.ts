@@ -651,6 +651,7 @@ describe("ExecaTerminalProcess", () => {
 				.mockReturnValueOnce({
 					pid: mockPid,
 					iterable: (_opts: any) =>
+						// eslint-disable-next-line require-yield -- intentional: simulates a hung WSL process for abort testing
 						(async function* () {
 							await new Promise<void>((resolve) => {
 								releaseIterable = resolve
