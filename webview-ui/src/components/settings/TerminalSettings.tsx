@@ -45,7 +45,7 @@ type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 
 // Sentinel value that maps to `undefined` (use VS Code's default shell).
 // The Select component cannot accept empty-string item values.
-const DEFAULT_PROFILE_VALUE = "__default__"
+const DEFAULT_PROFILE_VALUE = "__zoo_code_follow_vscode_sentinel__"
 
 export const TerminalSettings = ({
 	terminalOutputPreviewSize,
@@ -242,7 +242,7 @@ export const TerminalSettings = ({
 										</div>
 									)}
 
-									{profileNames.length === 0 && (
+									{isProfilesLoaded && profileNames.length === 0 && (
 										<div
 											className="text-vscode-descriptionForeground text-xs mt-1"
 											data-testid="terminal-profile-no-profiles-hint">

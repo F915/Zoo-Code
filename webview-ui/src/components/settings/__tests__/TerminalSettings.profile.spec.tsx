@@ -99,7 +99,7 @@ describe("TerminalSettings unified profile dropdown", () => {
 		setup()
 		const dropdown = screen.getByTestId("terminal-profile-dropdown")
 		expect(dropdown).toBeInTheDocument()
-		expect(dropdown.getAttribute("data-value")).toBe("__default__")
+		expect(dropdown.getAttribute("data-value")).toBe("__zoo_code_follow_vscode_sentinel__")
 		// Configure button visible because "Following VS Code profile" is selected
 		expect(screen.getByTestId("terminal-profile-configure-button")).toBeInTheDocument()
 	})
@@ -144,7 +144,7 @@ describe("TerminalSettings unified profile dropdown", () => {
 			)
 		})
 
-		fireEvent.click(screen.getByTestId("option-__default__"))
+		fireEvent.click(screen.getByTestId("option-__zoo_code_follow_vscode_sentinel__"))
 		expect(setCachedStateField).toHaveBeenCalledWith("terminalProfile", undefined)
 	})
 
@@ -190,6 +190,8 @@ describe("TerminalSettings unified profile dropdown", () => {
 
 	it("shows no-profiles hint when profile list is empty after load", () => {
 		setup()
+		// Hint should NOT appear before profiles are loaded
+		expect(screen.queryByTestId("terminal-profile-no-profiles-hint")).not.toBeInTheDocument()
 		act(() => {
 			window.dispatchEvent(
 				new MessageEvent("message", {
@@ -197,6 +199,7 @@ describe("TerminalSettings unified profile dropdown", () => {
 				}),
 			)
 		})
+		// Hint should appear after profiles loaded with empty list
 		expect(screen.getByTestId("terminal-profile-no-profiles-hint")).toBeInTheDocument()
 	})
 

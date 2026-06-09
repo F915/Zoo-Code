@@ -753,7 +753,7 @@
 		"profile": {
 			"label": "Shell für Zoo Code",
 			"followVscode": "VS Code-Profil folgen (empfohlen)",
-			"description": "Standardmäßig verwendet Zoo Code die in VS Code konfigurierte Shell. Wähle Überschreiben, um ein pfadbasiertes Shell-Profil zu wählen, das VS Code bereitstellt. Quellenbasierte Profile (z. B. der integrierte PowerShell-Eintrag) können hier nicht aufgelistet werden. <0>Mehr erfahren</0>",
+			"description": "Standardmäßig verwendet Zoo Code die in VS Code konfigurierte Shell. Wähle ein Shell-Profil aus der Liste, um ein pfadbasiertes Shell-Profil zu verwenden, das VS Code bereitstellt. Quellenbasierte Profile (z. B. der integrierte PowerShell-Eintrag) können hier nicht aufgelistet werden. <0>Mehr erfahren</0>",
 			"configureButton": "Standardprofil in VS Code auswählen",
 			"noProfiles": "(keine pfadbasierten Profile in terminal.integrated.profiles gefunden)"
 		}
