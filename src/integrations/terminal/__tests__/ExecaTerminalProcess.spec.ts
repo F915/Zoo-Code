@@ -37,7 +37,7 @@ vitest.mock("ps-tree", () => ({
 }))
 
 import { execa } from "execa"
-import { ExecaTerminalProcess } from "../ExecaTerminalProcess"
+import { ExecaTerminalProcess, clearWslPathCache } from "../ExecaTerminalProcess"
 import { BaseTerminal } from "../BaseTerminal"
 import { Terminal } from "../Terminal"
 import type { RooTerminal } from "../types"
@@ -74,6 +74,7 @@ describe("ExecaTerminalProcess", () => {
 	afterEach(() => {
 		process.env = originalEnv
 		vitest.restoreAllMocks()
+		clearWslPathCache()
 	})
 
 	describe("UTF-8 encoding fix", () => {
@@ -226,7 +227,7 @@ describe("ExecaTerminalProcess", () => {
 				1,
 				WSL_EXE_PATH,
 				["wslpath", "\\\\fileserver\\share\\project"],
-				expect.objectContaining({ timeout: 5_000 }),
+				expect.objectContaining({ timeout: expect.any(Number) }),
 			)
 			expect(execaMock).toHaveBeenNthCalledWith(
 				2,
@@ -267,7 +268,6 @@ describe("ExecaTerminalProcess", () => {
 			)
 		})
 
-
 		it("should use default WSL distro when no profile args configured", async () => {
 			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
 			BaseTerminal.setExecaShellPath(undefined)
@@ -300,7 +300,269 @@ describe("ExecaTerminalProcess", () => {
 			)
 		})
 
+		// Fix 4: cache wslpath results so repeated UNC CWDs skip wslpath
+		it("should cache wslpath results so repeated UNC CWDs skip wslpath", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\fileserver\\share\\project")
+			vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue([])
 
+			// First run() — wslpath spawns, command spawns
+			vitest.mocked(execa).mockReset()
+			vitest
+				.mocked(execa)
+				.mockReturnValueOnce({
+					pid: mockPid,
+					stdout: "/mnt/share/project\n",
+					iterable: (_opts: any) =>
+						(async function* () {
+							yield "run1\n"
+						})(),
+					kill: vitest.fn(),
+				} as any)
+				.mockReturnValueOnce({
+					pid: mockPid + 1,
+					iterable: (_opts: any) =>
+						(async function* () {
+							yield "run1\n"
+						})(),
+					kill: vitest.fn(),
+				} as any)
+
+			await terminalProcess.run("echo first")
+
+			// Second run() with same CWD — should use cache, skip wslpath
+			vitest.mocked(execa).mockReset()
+			vitest.mocked(execa).mockReturnValueOnce({
+				pid: mockPid + 2,
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run2\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+
+			await terminalProcess.run("echo second")
+
+			// Only one execa call: wsl.exe with --cd (no wslpath call)
+			expect(execa).toHaveBeenCalledTimes(1)
+			expect(execa).toHaveBeenCalledWith(
+				WSL_EXE_PATH,
+				["--cd", "/mnt/share/project", "--", "bash", "-c", "echo second"],
+				expect.any(Object),
+			)
+		})
+
+		it("should NOT cache failed wslpath conversions", async () => {
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\fileserver\\share\\project")
+			vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue([])
+
+			// First run: wslpath fails → falls through to no --cd
+			vitest.mocked(execa).mockReset()
+			vitest
+				.mocked(execa)
+				.mockRejectedValueOnce(new Error("wslpath failed"))
+				.mockReturnValueOnce({
+					pid: mockPid,
+					iterable: (_opts: any) =>
+						(async function* () {
+							yield "run1\n"
+						})(),
+					kill: vitest.fn(),
+				} as any)
+
+			await terminalProcess.run("echo first")
+
+			// Second run: same CWD, MUST retry wslpath (not use stale cache)
+			vitest.mocked(execa).mockReset()
+			vitest
+				.mocked(execa)
+				.mockReturnValueOnce({
+					pid: mockPid + 1,
+					stdout: "/mnt/share/project\n",
+					iterable: (_opts: any) =>
+						(async function* () {
+							yield "run2\n"
+						})(),
+					kill: vitest.fn(),
+				} as any)
+				.mockReturnValueOnce({
+					pid: mockPid + 2,
+					iterable: (_opts: any) =>
+						(async function* () {
+							yield "run2\n"
+						})(),
+					kill: vitest.fn(),
+				} as any)
+
+			await terminalProcess.run("echo second")
+
+			// Two calls: wslpath retry + wsl.exe with --cd
+			expect(execa).toHaveBeenCalledTimes(2)
+			expect(execa).toHaveBeenNthCalledWith(
+				1,
+				WSL_EXE_PATH,
+				["wslpath", "\\\\fileserver\\share\\project"],
+				expect.any(Object),
+			)
+		})
+	})
+
+	it("should include profileArgs in cache key — same path, different distro → cache miss", async () => {
+		vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+		BaseTerminal.setExecaShellPath(undefined)
+		vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\fileserver\\share\\project")
+
+		// First run: Ubuntu distro
+		vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue(["-d", "Ubuntu-22.04"])
+		vitest.mocked(execa).mockReset()
+		vitest
+			.mocked(execa)
+			.mockReturnValueOnce({
+				pid: mockPid,
+				stdout: "/home/ubuntu/project\n",
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run1\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+			.mockReturnValueOnce({
+				pid: mockPid + 1,
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run1\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+
+		await terminalProcess.run("echo first")
+
+		// Second run: Debian distro — MUST retry wslpath because
+		// the cache key includes profileArgs, and "-d,Ubuntu-22.04"
+		// ≠ "-d,Debian"
+		vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue(["-d", "Debian"])
+		vitest.mocked(execa).mockReset()
+		vitest
+			.mocked(execa)
+			.mockReturnValueOnce({
+				pid: mockPid + 2,
+				stdout: "/home/debian/project\n",
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run2\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+			.mockReturnValueOnce({
+				pid: mockPid + 3,
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run2\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+
+		await terminalProcess.run("echo second")
+
+		const execaMock = vitest.mocked(execa)
+		// Two wslpath calls: one per distro
+		expect(execaMock).toHaveBeenNthCalledWith(
+			1,
+			WSL_EXE_PATH,
+			["-d", "Debian", "wslpath", "\\\\fileserver\\share\\project"],
+			expect.any(Object),
+		)
+		expect(execaMock).toHaveBeenNthCalledWith(
+			2,
+			WSL_EXE_PATH,
+			["-d", "Debian", "--cd", "/home/debian/project", "--", "bash", "-c", "echo second"],
+			expect.any(Object),
+		)
+	})
+
+	it("should cache wslpath results when profileArgs are set", async () => {
+		vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+		BaseTerminal.setExecaShellPath(undefined)
+		vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("\\\\fileserver\\share\\project")
+		vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue(["-d", "Ubuntu-22.04"])
+
+		// First run with distro args
+		vitest.mocked(execa).mockReset()
+		vitest
+			.mocked(execa)
+			.mockReturnValueOnce({
+				pid: mockPid,
+				stdout: "/home/ubuntu/project\n",
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run1\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+			.mockReturnValueOnce({
+				pid: mockPid + 1,
+				iterable: (_opts: any) =>
+					(async function* () {
+						yield "run1\n"
+					})(),
+				kill: vitest.fn(),
+			} as any)
+
+		await terminalProcess.run("echo first")
+
+		// Second run: same distro, same CWD → cache hit, skip wslpath
+		vitest.mocked(execa).mockReset()
+		vitest.mocked(execa).mockReturnValueOnce({
+			pid: mockPid + 2,
+			iterable: (_opts: any) =>
+				(async function* () {
+					yield "run2\n"
+				})(),
+			kill: vitest.fn(),
+		} as any)
+
+		await terminalProcess.run("echo second")
+
+		// Only one execa call: wsl.exe with --cd, no wslpath
+		expect(execa).toHaveBeenCalledTimes(1)
+		expect(execa).toHaveBeenCalledWith(
+			WSL_EXE_PATH,
+			["-d", "Ubuntu-22.04", "--cd", "/home/ubuntu/project", "--", "bash", "-c", "echo second"],
+			expect.any(Object),
+		)
+	})
+
+	describe("abort (WSL)", () => {
+		it("should skip psTree child killing when running under WSL", async () => {
+			// Configure WSL shell environment — same setup as other WSL tests
+			vitest.mocked(shellUtils.getShell).mockReturnValue(WSL_EXE_PATH)
+			BaseTerminal.setExecaShellPath(undefined)
+			vitest.mocked(mockTerminal.getCurrentWorkingDirectory).mockReturnValue("C:/test/cwd")
+			vitest.spyOn(Terminal, "getConfiguredWslProfileArgs").mockReturnValue([])
+
+			// Run a command through the default mock to enter the WSL code path
+			// and set the isWslShell instance property on the process.
+			await terminalProcess.run("echo test")
+
+			// After run() completes, pid is still set, and the psTree
+			// embedded in abort() unconditionally walks the process tree.
+			// Clear the psTree mock so we can measure only the abort() call.
+			const { default: psTreeMock } = await import("ps-tree")
+			vitest.mocked(psTreeMock).mockClear()
+
+			// When isWslShell is true, psTree should NOT be called —
+			// the actual bash process tree lives in the WSL Linux VM and
+			// is invisible to Windows process enumeration.
+			const killSpy = vitest.spyOn(process, "kill").mockImplementation(() => true)
+			terminalProcess.abort()
+			await new Promise((r) => setTimeout(r, 0))
+
+			expect(psTreeMock).not.toHaveBeenCalled()
+			killSpy.mockRestore()
+		})
 	})
 	describe("basic functionality", () => {
 		it("should create instance with terminal reference", () => {
@@ -420,7 +682,6 @@ describe("ExecaTerminalProcess", () => {
 			})
 		})
 	})
-
 
 	describe("abort timeout kill error handling (F2)", () => {
 		it("logs warning when subprocess.kill throws during abort timeout", () => {

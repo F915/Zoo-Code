@@ -11,10 +11,23 @@ import { Terminal } from "./Terminal"
 // Matches \\wsl$\Distro\... and \\wsl.localhost\Distro\...
 const WSL_UNC_PREFIX = /^\/\/wsl(?:\$|\.localhost)\/([^\/]+)\/?(.*)$/i
 
-async function convertWindowsPathToWsl(
-	windowsPath: string,
-	profileArgs?: string[],
-): Promise<string | null> {
+/** Timeout for wsl.exe wslpath calls — path conversion should be near-instant. */
+const WSLPATH_TIMEOUT_MS = 5_000
+
+/** Cache of Windows→WSL path conversions, keyed by (path, profileArgs).
+ *  Profile args (e.g. `-d Ubuntu-22.04`) are included in the composite key
+ *  so switching distros mid-session does not return a stale cached path from
+ *  a different distribution with potentially different mount points.
+ *  Bounded by unique (CWD × distro) combinations a user visits; no TTL
+ *  needed since mount points don't change within a session. */
+const wslPathCache = new Map<string, string>()
+
+/** Clear the wslpath cache. Exported for test isolation. */
+export function clearWslPathCache(): void {
+	wslPathCache.clear()
+}
+
+async function convertWindowsPathToWsl(windowsPath: string, profileArgs?: string[]): Promise<string | null> {
 	const forward = windowsPath.replace(/\\/g, "/")
 
 	// Already a POSIX/WSL path — no Windows-to-WSL conversion needed.
@@ -40,17 +53,32 @@ async function convertWindowsPathToWsl(
 	}
 
 	// Tier 3: Arbitrary UNC → wslpath fallback.
+	// Cache results — spawning wsl.exe on every run() is unnecessary
+	// when the (CWD, distro) pair doesn't change between commands.
+	// Include profileArgs in the composite key so switching WSL distros
+	// mid-session (e.g. Ubuntu → Debian) does not return a stale path.
+	const cacheKey = profileArgs?.length ? `${windowsPath}::${profileArgs.join(",")}` : windowsPath
+	const cached = wslPathCache.get(cacheKey)
+	if (cached !== undefined) {
+		return cached
+	}
+
 	// Pass the configured WSL distro args so wslpath runs in the correct
 	// distro — the system default may have different mount points.
 	try {
 		const wslpathArgs = [...(profileArgs ?? []), "wslpath", windowsPath]
 		const { stdout } = await execa(WSL_EXE_PATH, wslpathArgs, {
-			timeout: 5_000,
+			timeout: WSLPATH_TIMEOUT_MS,
 			stdin: "ignore",
 		})
 		const wslPath = stdout.trim()
+		if (wslPath) {
+			wslPathCache.set(cacheKey, wslPath)
+		}
 		return wslPath || null
 	} catch {
+		// Don't cache failures — a transient WSL issue shouldn't
+		// permanently prevent path conversion for this directory.
 		console.warn(`[ExecaTerminalProcess] wslpath failed for "${windowsPath}"`)
 		return null
 	}
@@ -62,6 +90,7 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 	private pid?: number
 	private subprocess?: ReturnType<typeof execa>
 	private pidUpdatePromise?: Promise<void>
+	private isWslShell = false
 
 	constructor(terminal: RooTerminal) {
 		super()
@@ -103,9 +132,9 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			const profileShell = execaShellPath ? undefined : Terminal.getProfileShell()
 
 			// WSL detection only applies when the user has NOT set an explicit execa shell.
-			const isWslShell = execaShellPath ? false : resolvedShell === WSL_EXE_PATH
+			this.isWslShell = execaShellPath ? false : resolvedShell === WSL_EXE_PATH
 
-			if (isWslShell) {
+			if (this.isWslShell) {
 				// Spawn wsl.exe directly (not through cmd.exe) to avoid nested-quoting issues.
 				// execa(file, args, options) passes args as an array — no shell interpretation.
 				//
@@ -366,8 +395,13 @@ export class ExecaTerminalProcess extends BaseTerminalProcess {
 			performKill()
 		}
 
-		// Continue with the rest of the abort logic
-		if (this.pid) {
+		// When running under WSL, the actual bash process and its children
+		// live inside the WSL Linux VM and are invisible to Windows psTree.
+		// The only effective termination mechanism is subprocess.kill()
+		// (TerminateProcess on wsl.exe), which closes the pty and sends
+		// SIGHUP to the inner bash session. Skip the psTree tree-walk —
+		// it provides a false sense of security on no-op child process kills.
+		if (this.pid && !this.isWslShell) {
 			// Also check for any child processes
 			psTree(this.pid, async (err, children) => {
 				if (!err) {
