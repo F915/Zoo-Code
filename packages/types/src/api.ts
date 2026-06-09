@@ -146,6 +146,16 @@ export interface RooCodeAPI extends EventEmitter<RooCodeAPIEvents> {
 	 * closes idle terminals so the next command starts fresh.
 	 */
 	setTerminalProfile(name: string | undefined): void
+	/**
+	 * Sets the shell integration timeout in milliseconds.
+	 * Controls how long the terminal waits for VS Code shell integration to
+	 * activate before falling back to the no-integration path.
+	 */
+	setShellIntegrationTimeout(ms: number): void
+	/**
+	 * Returns the current shell integration timeout in milliseconds.
+	 */
+	getShellIntegrationTimeout(): number
 }
 
 export interface RooCodeIpcServer extends EventEmitter<IpcServerEvents> {

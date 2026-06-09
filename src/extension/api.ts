@@ -488,6 +488,14 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 		}
 	}
 
+	public setShellIntegrationTimeout(ms: number): void {
+		Terminal.setShellIntegrationTimeout(ms)
+	}
+
+	public getShellIntegrationTimeout(): number {
+		return Terminal.getShellIntegrationTimeout()
+	}
+
 	// Provider Profile Management
 
 	public getProfiles(): string[] {
