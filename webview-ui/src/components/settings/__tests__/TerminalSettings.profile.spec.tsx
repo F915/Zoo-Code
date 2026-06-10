@@ -90,6 +90,31 @@ describe("TerminalSettings VS Code terminal profile (#277)", () => {
 		return { onTerminalProfilePickerOpened, setCachedStateField }
 	}
 
+	// Render with Inline Terminal OFF (VS Code Terminal mode), with an active override.
+	const renderWithInlineOff = (terminalProfile?: string) => {
+		const setCachedStateField = vi.fn()
+		const onTerminalProfilePickerOpened = vi.fn()
+		const { rerender } = render(
+			<TerminalSettings
+				terminalShellIntegrationDisabled={false}
+				terminalProfile={terminalProfile}
+				onTerminalProfilePickerOpened={onTerminalProfilePickerOpened}
+				setCachedStateField={setCachedStateField}
+			/>,
+		)
+		const rerenderWithInlineOn = () => {
+			rerender(
+				<TerminalSettings
+					terminalShellIntegrationDisabled={true}
+					terminalProfile={terminalProfile}
+					onTerminalProfilePickerOpened={onTerminalProfilePickerOpened}
+					setCachedStateField={setCachedStateField}
+				/>,
+			)
+		}
+		return { setCachedStateField, rerender: rerenderWithInlineOn }
+	}
+
 	it("requests the terminal profile names on mount via the allowlisted message", () => {
 		setup()
 		const types = postMessageMock.mock.calls.map((c) => c[0]?.type)
@@ -227,5 +252,50 @@ describe("TerminalSettings VS Code terminal profile (#277)", () => {
 		const overrideRadio = screen.getByTestId("terminal-profile-override-radio")
 		expect(overrideRadio).not.toBeDisabled()
 		expect(screen.queryByTestId("terminal-profile-no-profiles-hint")).not.toBeInTheDocument()
+	})
+
+	it("clears terminalProfile when Inline Terminal is enabled (mode switch)", () => {
+		const { setCachedStateField, rerender } = renderWithInlineOff("Git Bash")
+
+		// Simulate the user checking "Use Inline Terminal"
+		rerender()
+
+		expect(setCachedStateField).toHaveBeenCalledWith("terminalProfile", undefined)
+	})
+
+	it("does not clear terminalProfile when switching from Inline back to VS Code Terminal", () => {
+		// Start with Inline Terminal ON, no profile override
+		const setCachedStateField = vi.fn()
+		const onTerminalProfilePickerOpened = vi.fn()
+		const { rerender } = render(
+			<TerminalSettings
+				terminalShellIntegrationDisabled={true}
+				terminalProfile={undefined}
+				onTerminalProfilePickerOpened={onTerminalProfilePickerOpened}
+				setCachedStateField={setCachedStateField}
+			/>,
+		)
+
+		// Switch to VS Code Terminal mode
+		rerender(
+			<TerminalSettings
+				terminalShellIntegrationDisabled={false}
+				terminalProfile={undefined}
+				onTerminalProfilePickerOpened={onTerminalProfilePickerOpened}
+				setCachedStateField={setCachedStateField}
+			/>,
+		)
+
+		expect(setCachedStateField).not.toHaveBeenCalledWith("terminalProfile", undefined)
+	})
+
+	it("does not error when clearing an already-undefined profile", () => {
+		const { setCachedStateField, rerender } = renderWithInlineOff(undefined)
+
+		// Switch to Inline Terminal with no override set
+		rerender()
+
+		// Should still work — no crash, no unexpected calls
+		expect(setCachedStateField).toHaveBeenCalledWith("terminalProfile", undefined)
 	})
 })

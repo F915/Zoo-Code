@@ -181,6 +181,9 @@ export abstract class BaseTerminal implements RooTerminal {
 
 	public static setShellIntegrationDisabled(disabled: boolean): void {
 		BaseTerminal.shellIntegrationDisabled = disabled
+		if (disabled) {
+			BaseTerminal.terminalProfile = undefined
+		}
 	}
 
 	public static getShellIntegrationDisabled(): boolean {

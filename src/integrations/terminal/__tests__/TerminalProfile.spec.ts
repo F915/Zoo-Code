@@ -78,6 +78,7 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 
 	afterEach(() => {
 		Terminal.setTerminalProfile(undefined)
+		Terminal.setShellIntegrationDisabled(false)
 		vi.restoreAllMocks()
 	})
 
@@ -98,6 +99,24 @@ describe("Terminal VS Code terminal profile (#277)", () => {
 
 			Terminal.setTerminalProfile("   ")
 			expect(Terminal.getTerminalProfile()).toBeUndefined()
+		})
+
+		describe("setShellIntegrationDisabled", () => {
+			it("clears terminalProfile when Inline Terminal is enabled", () => {
+				Terminal.setTerminalProfile("Git Bash")
+				expect(Terminal.getTerminalProfile()).toBe("Git Bash")
+
+				Terminal.setShellIntegrationDisabled(true)
+				expect(Terminal.getTerminalProfile()).toBeUndefined()
+			})
+
+			it("does not clear terminalProfile when VS Code Terminal mode is selected", () => {
+				Terminal.setTerminalProfile("Git Bash")
+				expect(Terminal.getTerminalProfile()).toBe("Git Bash")
+
+				Terminal.setShellIntegrationDisabled(false)
+				expect(Terminal.getTerminalProfile()).toBe("Git Bash")
+			})
 		})
 	})
 

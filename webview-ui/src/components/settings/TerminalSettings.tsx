@@ -1,4 +1,4 @@
-import { HTMLAttributes, useState, useCallback, useEffect, useId } from "react"
+import { HTMLAttributes, useState, useCallback, useEffect, useId, useRef } from "react"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { vscode } from "@/utils/vscode"
 import { VSCodeCheckbox, VSCodeLink, VSCodeButton } from "@vscode/webview-ui-toolkit/react"
@@ -105,6 +105,19 @@ export const TerminalSettings = ({
 			setCachedStateField("terminalProfile", undefined)
 		}
 	}, [isProfilesLoaded, profileNames, setCachedStateField, terminalProfile])
+
+	// Defense in depth: the backend also clears the profile when Inline
+	// Terminal is enabled (BaseTerminal.setShellIntegrationDisabled), but
+	// we clear here for immediate UI consistency — so React state, the
+	// extension host, and persisted settings are all updated before the
+	// execa path next reads getShell().
+	const prevVSCodeTerminalEnabled = useRef(isVSCodeTerminalEnabled)
+	useEffect(() => {
+		if (prevVSCodeTerminalEnabled.current && !isVSCodeTerminalEnabled) {
+			setCachedStateField("terminalProfile", undefined)
+		}
+		prevVSCodeTerminalEnabled.current = isVSCodeTerminalEnabled
+	}, [isVSCodeTerminalEnabled, setCachedStateField])
 
 	return (
 		<div className={cn("flex flex-col", className)} {...props}>
