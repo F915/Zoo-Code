@@ -45,7 +45,7 @@ type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 
 // Sentinel value that maps to `undefined` (use VS Code's default shell).
 // The Select component cannot accept empty-string item values.
-const DEFAULT_PROFILE_VALUE = "__zoo_code_follow_vscode_sentinel__"
+export const DEFAULT_PROFILE_VALUE = "__zoo_code_follow_vscode_sentinel__"
 
 export const TerminalSettings = ({
 	terminalOutputPreviewSize,
@@ -203,15 +203,14 @@ export const TerminalSettings = ({
 									</label>
 
 									<Select
-										value={terminalProfile || DEFAULT_PROFILE_VALUE}
+										value={terminalProfile ?? DEFAULT_PROFILE_VALUE}
 										onValueChange={(value) =>
 											setCachedStateField(
 												"terminalProfile",
 												value === DEFAULT_PROFILE_VALUE ? undefined : value,
 											)
-										}
-										data-testid="terminal-profile-dropdown">
-										<SelectTrigger className="w-full">
+										}>
+										<SelectTrigger className="w-full" data-testid="terminal-profile-dropdown">
 											<SelectValue placeholder={t("settings:common.select")} />
 										</SelectTrigger>
 										<SelectContent>

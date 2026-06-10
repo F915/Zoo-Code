@@ -2,9 +2,9 @@
 
 import * as React from "react"
 
-import { render, screen, fireEvent, act, cleanup } from "@/utils/test-utils"
+import { render, screen, fireEvent, act } from "@/utils/test-utils"
 
-import { TerminalSettings } from "../TerminalSettings"
+import { TerminalSettings, DEFAULT_PROFILE_VALUE } from "../TerminalSettings"
 
 // Mock translation hook to echo keys
 vi.mock("@/i18n/TranslationContext", () => ({
@@ -56,15 +56,15 @@ function renderSelectChildren(children: any, onValueChange: (value: string) => v
 	return React.Children.map(children, (child: any) => {
 		if (!child || typeof child !== "object") return child
 		const itemValue = child.props?.value ?? child.props?.["data-item-value"]
-		if (child.props?.children && itemValue === undefined) {
-			return renderSelectChildren(child.props.children, onValueChange)
-		}
 		if (itemValue !== undefined) {
 			return (
 				<button data-testid={`option-${itemValue}`} onClick={() => onValueChange(itemValue)}>
 					{child.props.children}
 				</button>
 			)
+		}
+		if (child.props?.children) {
+			return React.cloneElement(child, {}, renderSelectChildren(child.props.children, onValueChange))
 		}
 		return child
 	})
@@ -78,7 +78,7 @@ describe("TerminalSettings unified profile dropdown", () => {
 	const setup = (terminalProfile?: string) => {
 		const setCachedStateField = vi.fn()
 		const onTerminalProfilePickerOpened = vi.fn()
-		render(
+		const { rerender } = render(
 			<TerminalSettings
 				terminalShellIntegrationDisabled={false}
 				terminalProfile={terminalProfile}
@@ -86,7 +86,7 @@ describe("TerminalSettings unified profile dropdown", () => {
 				setCachedStateField={setCachedStateField}
 			/>,
 		)
-		return { onTerminalProfilePickerOpened, setCachedStateField }
+		return { onTerminalProfilePickerOpened, setCachedStateField, rerender }
 	}
 
 	it("requests the terminal profile names on mount via the allowlisted message", () => {
@@ -99,13 +99,13 @@ describe("TerminalSettings unified profile dropdown", () => {
 		setup()
 		const dropdown = screen.getByTestId("terminal-profile-dropdown")
 		expect(dropdown).toBeInTheDocument()
-		expect(dropdown.getAttribute("data-value")).toBe("__zoo_code_follow_vscode_sentinel__")
+		expect(dropdown.closest('[data-testid="select"]')?.getAttribute("data-value")).toBe(DEFAULT_PROFILE_VALUE)
 		// Configure button visible because "Following VS Code profile" is selected
 		expect(screen.getByTestId("terminal-profile-configure-button")).toBeInTheDocument()
 	})
 
 	it("selects a specific profile and hides the Configure button", () => {
-		const { setCachedStateField } = setup()
+		const { setCachedStateField, onTerminalProfilePickerOpened, rerender } = setup()
 
 		act(() => {
 			window.dispatchEvent(
@@ -119,12 +119,11 @@ describe("TerminalSettings unified profile dropdown", () => {
 		fireEvent.click(screen.getByTestId("option-Git Bash"))
 		expect(setCachedStateField).toHaveBeenCalledWith("terminalProfile", "Git Bash")
 
-		// Re-render with profile selected (cleanup first to avoid stale DOM from first render)
-		cleanup()
-		render(
+		rerender(
 			<TerminalSettings
 				terminalShellIntegrationDisabled={false}
 				terminalProfile="Git Bash"
+				onTerminalProfilePickerOpened={onTerminalProfilePickerOpened}
 				setCachedStateField={setCachedStateField}
 			/>,
 		)
@@ -144,7 +143,7 @@ describe("TerminalSettings unified profile dropdown", () => {
 			)
 		})
 
-		fireEvent.click(screen.getByTestId("option-__zoo_code_follow_vscode_sentinel__"))
+		fireEvent.click(screen.getByTestId(`option-${DEFAULT_PROFILE_VALUE}`))
 		expect(setCachedStateField).toHaveBeenCalledWith("terminalProfile", undefined)
 	})
 
